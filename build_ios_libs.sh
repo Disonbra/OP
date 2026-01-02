@@ -102,7 +102,7 @@ build_configure_platform_lib() {
         MIN_VERSION_FLAG="-miphoneos-version-min=${DEPLOYMENT_TARGET}"
     else  # SIMULATORARM64
         IOS_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-        ARCH="arm64"  # Apple Silicon simulators use arm64
+        ARCH="arm64"
         MIN_VERSION_FLAG="-mios-simulator-version-min=${DEPLOYMENT_TARGET}"
     fi
     
