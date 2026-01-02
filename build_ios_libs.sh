@@ -20,10 +20,11 @@ WORK_DIR="$(pwd)/ios_build"
 SRC_DIR="${WORK_DIR}/src"
 TOOLCHAIN_DIR="${WORK_DIR}/ios-cmake"
 PREFIX="${WORK_DIR}/ios-libs"
+DEVICE_PREFIX="${PREFIX}/OS64"
+SIM_PREFIX="${PREFIX}/SIMULATORARM64"
 MARKERS_DIR="${PREFIX}/markers"
 BUILD_JOBS=$(sysctl -n hw.logicalcpu)
 
-PLATFORM="OS64COMBINED"
 DEPLOYMENT_TARGET="17.0"
 COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
 
@@ -31,7 +32,7 @@ LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
 FREETYPE2_VERSION=2.13.3
 OPENAL_VERSION=1.24.3
-BOOST_VERSION=1.88.0 # Starts at line 417
+BOOST_VERSION=1.88.0
 LIBICU_VERSION=78.1
 FFMPEG_VERSION=7.1.1
 SDL2_VERSION=2.32.4
@@ -45,13 +46,17 @@ OSG_VERSION=495b370da37d9e3c739914a190f9821884619a4a
 LZ4_VERSION=1.10.0
 LUAJIT_VERSION=2.1.ROLLING
 OPENMW_VERSION=96565e9afb9bbebf77c1bbc108d5bf4f9bee2e6f
-JAVA_VERSION=21
+RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
+VSG_VERSION=1.0.9
+VSGXCHANGE_VERSION=1.0.5
+VSGOPENMW_VERSION=0.2
+
 
 mkdir -p "${SRC_DIR}" "${PREFIX}" "${MARKERS_DIR}"
 cd "${WORK_DIR}"
 
-echo "=== Downloading ios-cmake toolchain ==="
 if [ ! -d "${TOOLCHAIN_DIR}" ]; then
+    echo "=== Downloading ios-cmake toolchain ==="
     git clone https://github.com/leetal/ios-cmake.git "${TOOLCHAIN_DIR}"
 fi
 
@@ -76,204 +81,407 @@ mark_as_installed() {
     echo "=== ${lib_name} built and marked as installed ==="
 }
 
-# ------------------- Helper function for CMake builds -------------------
-build_cmake_lib() {
+# ------------------- Configure-based build functions -------------------
+build_configure_platform_lib() {
+    local name="$1"
+    local platform="$2"
+    local src_dir="$3"
+    shift 3
+    local configure_args=("$@")
+    
+    local build_dir="build_${name}_${platform}"
+    local install_prefix="${PREFIX}/${platform}"
+    
+    echo "=== Building ${name} for ${platform} using configure ==="
+    mkdir -p "${build_dir}" && cd "${build_dir}"
+    
+    # Set SDK path based on platform
+    if [ "${platform}" = "OS64" ]; then
+        IOS_SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+        ARCH="arm64"
+        MIN_VERSION_FLAG="-miphoneos-version-min=${DEPLOYMENT_TARGET}"
+    else  # SIMULATORARM64
+        IOS_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+        ARCH="arm64"  # Apple Silicon simulators use arm64
+        MIN_VERSION_FLAG="-mios-simulator-version-min=${DEPLOYMENT_TARGET}"
+    fi
+    
+    # Common configure flags
+    CFLAGS="${COMMON_FLAGS} -isysroot ${IOS_SDK_PATH} -arch ${ARCH} ${MIN_VERSION_FLAG}"
+    CPPFLAGS="-isysroot ${IOS_SDK_PATH}"
+    LDFLAGS="-isysroot ${IOS_SDK_PATH}"
+    
+    # Run configure
+    if [[ "${name}" == *"ffmpeg"* ]]; then
+        # FFmpeg configure with its own flags
+        "${src_dir}/configure" \
+            --prefix="${install_prefix}" \
+            "${configure_args[@]}"
+    else
+        # Standard configure for other libraries
+        "${src_dir}/configure" \
+            --host=arm-apple-darwin \
+            --prefix="${install_prefix}" \
+            --enable-static \
+            --disable-shared \
+            CFLAGS="${CFLAGS}" \
+            CPPFLAGS="${CPPFLAGS}" \
+            LDFLAGS="${LDFLAGS}" \
+            "${configure_args[@]}"
+    fi
+    
+    make -j"${BUILD_JOBS}"
+    make install
+    
+    cd ..
+}
+
+build_configure_dual_platform() {
+    local name="$1"
+    local src_dir="$2"
+    shift 2
+    local configure_args=("$@")
+    
+    # Build for device
+    if skip_if_installed "${name}_device"; then true; else
+        cd "${src_dir}"
+        build_configure_platform_lib "${name}" "OS64" "${src_dir}" "${configure_args[@]}"
+        
+        mark_as_installed "${name}_device"
+    fi
+    
+    # Build for simulator
+    if skip_if_installed "${name}_sim"; then true; else
+        cd "${src_dir}"
+        build_configure_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${configure_args[@]}"
+        
+        mark_as_installed "${name}_sim"
+    fi
+}
+
+# ------------------- Modified build function -------------------
+build_dual_platform() {
     local name="$1"
     local src_dir="$2"
     shift 2
     local extra_args=("$@")
+    
+    # Build for device
+    if skip_if_installed "${name}_device"; then true; else
+        echo "=== Building ${name} for device ==="
+        cd "${src_dir}"
+        
+        # Process arguments for device
+        local device_args=()
+        for arg in "${extra_args[@]}"; do
+            device_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/OS64}")
+        done
+        
+        build_platform_lib "${name}" "OS64" "${src_dir}" "${extra_args[@]}"
+        
+        mark_as_installed "${name}_device"
+    fi
+    
+    # Build for simulator
+    if skip_if_installed "${name}_sim"; then true; else
+        echo "=== Building ${name} for simulator ==="
+        cd "${src_dir}"
+        
+        # Process arguments for simulator
+        local sim_args=()
+        for arg in "${extra_args[@]}"; do
+            sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
+        done
+        
+        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
+        
+        mark_as_installed "${name}_sim"
+    fi
+}
 
-    echo "=== Building ${name} ==="
-    mkdir -p "build_${name}" && cd "build_${name}"
-
+# ------------------- Modified build function -------------------
+build_platform_lib() {
+    local name="$1"
+    local platform="$2"  # "OS64" or "SIMULATORARM64"
+    local src_dir="$3"
+    shift 3
+    local extra_args=("$@")
+    
+    local build_dir="build_${name}_${platform}"
+    local install_prefix="${PREFIX}/${platform}"
+    
+    mkdir -p "${build_dir}" && cd "${build_dir}"
+    
     cmake "${src_dir}" \
         -G Xcode \
         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-        -DPLATFORM="${PLATFORM}" \
+        -DPLATFORM="${platform}" \
         -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
-        -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+        -DCMAKE_INSTALL_PREFIX="${install_prefix}" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_FIND_ROOT_PATH="${install_prefix}" \
         -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
         -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-        -Wno-deprecated \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         "${extra_args[@]}"
-
+    
     cmake --build . --config Release -j"${BUILD_JOBS}"
     cmake --install . --config Release
-
+    
+    # Special handling for gl4es - copy headers to main include directory
+    if [[ "${name}" == *"gl4es"* ]]; then
+        echo "=== Copying gl4es headers to main include directory ==="
+        
+        # Copy all files and folders from gl4es/include/ to include/
+        if [ -d "${install_prefix}/include/gl4es/include" ]; then
+            echo "Copying from ${install_prefix}/include/gl4es/include to ${install_prefix}/include/"
+            cp -r "${install_prefix}/include/gl4es/include/"* "${install_prefix}/include/" 2>/dev/null || true
+            
+            # Also check for any headers directly in gl4es directory
+            if [ -d "${install_prefix}/include/gl4es" ]; then
+                find "${install_prefix}/include/gl4es" -name "*.h" -exec cp {} "${install_prefix}/include/" \; 2>/dev/null || true
+            fi
+        fi
+    fi
+    
     cd ..
-    rm -rf "build_${name}"
+}
+
+# ------------------- Utility functions -------------------
+switch_to_device() {
+    echo "=== Switching to device libraries ==="
+    rm -f "${PREFIX}/lib"
+    ln -sf "${DEVICE_PREFIX}" "${PREFIX}/active"
+    echo "Now using device libraries"
+}
+
+switch_to_simulator() {
+    echo "=== Switching to simulator libraries ==="
+    rm -f "${PREFIX}/lib"
+    ln -sf "${SIM_PREFIX}" "${PREFIX}/active"
+    echo "Now using simulator libraries"
+}
+
+create_universal() {
+    local lib_name="$1"
+    echo "=== Creating universal ${lib_name} ==="
+    
+    mkdir -p "${UNIVERSAL_PREFIX}/lib"
+    
+    if [ -f "${DEVICE_PREFIX}/lib/${lib_name}" ] && [ -f "${SIM_PREFIX}/lib/${lib_name}" ]; then
+        lipo -create \
+            "${DEVICE_PREFIX}/lib/${lib_name}" \
+            "${SIM_PREFIX}/lib/${lib_name}" \
+            -output "${UNIVERSAL_PREFIX}/lib/${lib_name}"
+        echo "Created ${UNIVERSAL_PREFIX}/lib/${lib_name}"
+    else
+        echo "Warning: Missing device or simulator library for ${lib_name}"
+    fi
+}
+
+# Create symbolic links for easy switching
+setup_links() {
+    echo "=== Setting up library links ==="
+    
+    # Create active symlink (default to device)
+    ln -sfn "${DEVICE_PREFIX}" "${PREFIX}/active"
+    
+    # Create include symlink (headers are usually same)
+    if [ -d "${DEVICE_PREFIX}/include" ]; then
+        ln -sf "${DEVICE_PREFIX}/include" "${PREFIX}/include"
+    fi
+    
+    echo "Active libraries: device"
+    echo "Use 'switch_to_simulator' to change"
 }
 
 # ------------------- ICU (universal static, device + simulator) -------------------
-if skip_if_installed "icu" "ICU"; then true; else
-    echo "=== Downloading and building ICU (universal static) ==="
+if skip_if_installed "icu"; then true; else
     cd "${SRC_DIR}"
-
-    # Download and extract
     if [ ! -d "icu-release-${LIBICU_VERSION}" ]; then
         wget -c https://github.com/unicode-org/icu/archive/refs/tags/release-${LIBICU_VERSION}.tar.gz -O - | tar -xz
     fi
-
-    ICU_SOURCE_DIR="${SRC_DIR}/icu-release-${LIBICU_VERSION}/icu4c/source"
-
-    # Step 1: Build host (macOS) tools first
-    echo "=== Building ICU host tools (macOS) ==="
-    mkdir -p icu_host_build && cd icu_host_build
-    "${ICU_SOURCE_DIR}/configure" \
-        --prefix="$(pwd)/install" \
-        --disable-tests \
-        --disable-samples \
-        --disable-icuio \
-        --disable-extras
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ..
-
-    # Step 2: Cross-build for device
-    echo "=== Building ICU for iOS device ==="
-    mkdir -p build_icu_device && cd build_icu_device
-    "${ICU_SOURCE_DIR}/configure" \
-        --host=arm-apple-darwin \
-        --prefix="${PREFIX}/icu_device" \
+    
+    if [ ! -d "${SRC_DIR}/icu_host_build" ]; then
+        echo "=== Building ICU for host ==="
+        mkdir -p icu_host_build && cd icu_host_build
+        "${SRC_DIR}/icu-release-${LIBICU_VERSION}/icu4c/source/configure" \
+            --prefix="$(pwd)/install" \
+            --disable-tests \
+            --disable-samples \
+            --disable-icuio \
+            --disable-extras
+        make -j"${BUILD_JOBS}"
+        cd ..
+    fi
+    
+    build_configure_dual_platform "icu" "${SRC_DIR}/icu-release-${LIBICU_VERSION}/icu4c/source" \
         --disable-tests \
         --disable-samples \
         --disable-icuio \
         --disable-extras \
         --disable-tools \
-        CC="clang -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
-        CXX="clang++ -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
-        CFLAGS="${COMMON_FLAGS} -miphoneos-version-min=${DEPLOYMENT_TARGET}" \
-        CXXFLAGS="${COMMON_FLAGS} -miphoneos-version-min=${DEPLOYMENT_TARGET}" \
-        LDFLAGS="-isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
         --with-cross-build="${SRC_DIR}/icu_host_build"
+fi
 
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ..
+# ------------------- Lua 5.1 (Makefile approach) -------------------
+LUA_VERSION="5.1.5"
 
-    # Step 3: Cross-build for simulator
-    echo "=== Building ICU for iOS simulator ==="
-    mkdir -p build_icu_sim && cd build_icu_sim
-    "${ICU_SOURCE_DIR}/configure" \
-        --host=arm-apple-darwin \
-        --enable-static \
-        --disable-shared \
-        --prefix="${PREFIX}/icu_sim" \
-        --disable-tests \
-        --disable-samples \
-        --disable-icuio \
-        --disable-extras \
-        --disable-tools \
-        CC="clang -arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" \
-        CXX="clang++ -arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" \
-        CFLAGS="${COMMON_FLAGS} -miphonesimulator-version-min=${DEPLOYMENT_TARGET}" \
-        CXXFLAGS="${COMMON_FLAGS} -miphonesimulator-version-min=${DEPLOYMENT_TARGET}" \
-        LDFLAGS="-isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" \
-        --with-cross-build="${SRC_DIR}/icu_host_build"
-        
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ..
+if skip_if_installed "lua_download"; then true; else
+    echo "=== Downloading Lua ${LUA_VERSION} ==="
+    cd "${SRC_DIR}"
+    if [ ! -d "lua-${LUA_VERSION}" ]; then
+        wget -c https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz -O - | tar -xz
+    fi
+    mark_as_installed "lua_download"
+fi
 
-    # Step 4: Merge static libs into universal
-    echo "=== Merging ICU libs into universal ==="
-    cd "${PREFIX}/lib"
-    for lib in libicudata.a libicui18n.a libicuuc.a libicuio.a libicule.a libiculx.a; do
-        if [ -f "${PREFIX}/icu_device/lib/$lib" ] && [ -f "${PREFIX}/icu_sim/lib/$lib" ]; then
-            lipo -create "${PREFIX}/icu_device/lib/$lib" "${PREFIX}/icu_sim/lib/$lib" -output "$lib"
-            echo "Created universal $lib"
-        fi
-    done
+# Function to build Lua for a specific platform
+build_lua_for_platform() {
+    local platform="$1"  # "device" or "simulator"
+    local platform_dir="$2"  # "OS64" or "SIMULATORARM64"
+    
+    echo "=== Building Lua ${LUA_VERSION} for ${platform} ==="
+    
+    cd "${SRC_DIR}/lua-${LUA_VERSION}"
+    
+    # Platform-specific SDK settings
+    if [ "${platform}" = "device" ]; then
+        SDK="iphoneos"
+        ARCH="arm64"
+        MIN_VERSION_FLAG="-miphoneos-version-min=${DEPLOYMENT_TARGET}"
+    else
+        SDK="iphonesimulator"
+        ARCH="x86_64"  # For Intel Mac simulators, or "arm64" for Apple Silicon
+        MIN_VERSION_FLAG="-mios-simulator-version-min=${DEPLOYMENT_TARGET}"
+    fi
+    
+    SDKROOT=$(xcrun --sdk "${SDK}" --show-sdk-path)
+    CC=$(xcrun --sdk "${SDK}" --find clang)
+    
+    # Set up environment for cross-compilation
+    export CC="${CC} -arch ${ARCH} -isysroot ${SDKROOT} ${MIN_VERSION_FLAG} -fPIC"
+    export AR="ar rcu"
+    export RANLIB="ranlib"
+    export MYCFLAGS="-O2 -fPIC ${COMMON_FLAGS}"
+    export MYLDFLAGS=""
+    
+    # Clean previous build
+    make clean 2>/dev/null || true
+    
+    # Build the library
+    make generic
+    
+    # Install headers and library to platform-specific directory
+    local install_prefix="${PREFIX}/${platform_dir}"
+    mkdir -p "${install_prefix}/include" "${install_prefix}/lib"
+    
+    # Copy headers
+    cp src/lua.h src/luaconf.h src/lualib.h src/lauxlib.h "${install_prefix}/include/"
+    
+    # Copy library (handle different names)
+    if [ -f "src/liblua.a" ]; then
+        cp src/liblua.a "${install_prefix}/lib/"
+    elif [ -f "src/liblua5.1.a" ]; then
+        cp src/liblua5.1.a "${install_prefix}/lib/"
+        ln -sf "${install_prefix}/lib/liblua5.1.a" "${install_prefix}/lib/liblua.a"
+    fi
+    
+    echo "✓ Lua built for ${platform}"
+}
 
-    # Copy headers (use device ones)
-    cp -r "${PREFIX}/icu_device/include" "${PREFIX}/"
+# Build for device (OS64)
+if skip_if_installed "lua_device"; then true; else
+    build_lua_for_platform "device" "OS64"
+    mark_as_installed "lua_device"
+fi
 
-    # Clean up
-    rm -rf "${PREFIX}/icu_device" "${PREFIX}/icu_sim" "${SRC_DIR}/icu_host_build"
-
-    mark_as_installed "icu" "ICU"
+# Build for simulator (SIMULATORARM64)
+if skip_if_installed "lua_sim"; then true; else
+    build_lua_for_platform "simulator" "SIMULATORARM64"
+    mark_as_installed "lua_sim"
 fi
 
 # ------------------- Bzip2 -------------------
 if skip_if_installed "bzip2"; then true; else
-    echo "=== Downloading and building bzip2 ==="
     cd "${SRC_DIR}"
     if [ ! -d "bzip2" ]; then
+        echo "=== Downloading and building bzip2 ==="
         git clone https://github.com/libarchive/bzip2.git
     fi
-    cd bzip2
-
-    build_cmake_lib "bzip2" "${SRC_DIR}/bzip2" \
+    
+    build_dual_platform "bzip2" "${SRC_DIR}/bzip2" \
         -DBUILD_SHARED_LIBS=OFF \
         -DBUILD_STATIC_LIBS=ON \
         -DENABLE_APP=OFF
-
-    mark_as_installed "bzip2"
 fi
 
 # ------------------- Zlib -------------------
 if skip_if_installed "zlib"; then true; else
-    echo "=== Downloading and building zlib ==="
     cd "${SRC_DIR}"
-    wget -c https://zlib.net/zlib-1.3.1.tar.gz -O - | tar -xz
-    cd zlib-1.3.1
+    if [ ! -d "zlib-${ZLIB_VERSION}" ]; then
+        echo "=== Downloading and building zlib ==="
+        wget -c https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz -O - | tar -xz
+    fi
 
-    build_cmake_lib "zlib" "${SRC_DIR}/zlib-1.3.1"
-
-    mark_as_installed "zlib"
+    build_dual_platform "zlib" "${SRC_DIR}/zlib-${ZLIB_VERSION}"
 fi
 
 # ------------------- libpng -------------------
 if skip_if_installed "libpng"; then true; else
-    echo "=== Downloading and building libpng ==="
     cd "${SRC_DIR}"
-    wget -c https://downloads.sourceforge.net/project/libpng/libpng16/1.6.48/libpng-1.6.48.tar.gz -O - | tar -xz
-    cd libpng-1.6.48
+    if [ ! -d "libpng-${LIBPNG_VERSION}" ]; then
+        echo "=== Downloading and building libpng ==="
+        wget -c https://downloads.sourceforge.net/project/libpng/libpng16/${LIBPNG_VERSION}/libpng-${LIBPNG_VERSION}.tar.gz -O - | tar -xz
+    fi
 
-    mkdir -p build && cd build
-    IOS_SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-
-    ../configure \
-        --host=arm-apple-darwin \
-        --enable-static \
-        --disable-shared \
-        --prefix="${PREFIX}" \
-        CFLAGS="${COMMON_FLAGS} -isysroot ${IOS_SDK_PATH} -arch arm64 -miphoneos-version-min=${DEPLOYMENT_TARGET}" \
-        CPPFLAGS="-isysroot ${IOS_SDK_PATH}" \
-        LDFLAGS="-isysroot ${IOS_SDK_PATH}"
-
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ../..
-    rm -rf build
-
-    mark_as_installed "libpng"
+    # Build for both platforms using configure
+    build_configure_dual_platform "libpng" "${SRC_DIR}/libpng-${LIBPNG_VERSION}" \
+        --host=arm-apple-darwin
 fi
 
 # ------------------- FreeType -------------------
 if skip_if_installed "freetype"; then true; else
-    echo "=== Downloading and building freetype ==="
     cd "${SRC_DIR}"
-    wget -c https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz -O - | tar -xJ
-    cd freetype-2.13.3
-
-    build_cmake_lib "freetype" "${SRC_DIR}/freetype-2.13.3" \
+    if [ ! -d "freetype-${FREETYPE2_VERSION}" ]; then
+        echo "=== Downloading and building freetype ==="
+        wget -c https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE2_VERSION}.tar.xz -O - | tar -xJ
+    fi
+    
+    build_dual_platform "freetype" "${SRC_DIR}/freetype-${FREETYPE2_VERSION}" \
         -DCMAKE_DISABLE_FIND_PACKAGE_BZip2=OFF \
         -DCMAKE_DISABLE_FIND_PACKAGE_PNG=OFF \
         -DCMAKE_DISABLE_FIND_PACKAGE_ZLIB=OFF
+fi
 
-    mark_as_installed "freetype"
+# ------------------- GL4ES -------------------
+if skip_if_installed "gl4es"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "gl4es" ]; then
+        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
+        git clone https://github.com/ptitSeb/gl4es.git gl4es
+        sed -i '' 's/#ifdef __GNUC__/#if defined(__GNUC__) \&\& !defined(__APPLE__)/' gl4es/src/gl/attributes.h
+    fi
+    
+    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
+        -DNOEGL=ON \
+        -DNOX11=ON \
+        -DDEFAULT_ES=2 \
+        -DSTATICLIB=OFF \
+        -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
+        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
+        -Wno-deprecated
 fi
 
 # ------------------- libxml2 -------------------
 if skip_if_installed "libxml2"; then true; else
-    echo "=== Downloading and building libxml2 ==="
     cd "${SRC_DIR}"
-    wget -c https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.3.tar.xz -O - | tar -xJ
-    cd libxml2-2.14.3
+    if [ ! -d "libxml2-${LIBXML2_VERSION}" ]; then
+        echo "=== Downloading and building libxml2 ==="
+        wget -c https://download.gnome.org/sources/libxml2/2.14/libxml2-${LIBXML2_VERSION}.tar.xz -O - | tar -xJ
+    fi
 
-    build_cmake_lib "libxml2" "${SRC_DIR}/libxml2-2.14.3" \
+    build_dual_platform "libxml2" "${SRC_DIR}/libxml2-${LIBXML2_VERSION}" \
         -DBUILD_SHARED_LIBS=OFF \
         -DLIBXML2_WITH_THREADS=ON \
         -DLIBXML2_WITH_ZLIB=ON \
@@ -282,78 +490,35 @@ if skip_if_installed "libxml2"; then true; else
         -DLIBXML2_WITH_PROGRAMS=OFF \
         -DLIBXML2_WITH_TESTS=OFF \
         -DLIBXML2_WITH_PYTHON=OFF
-
-    mark_as_installed "libxml2"
 fi
 
 # ------------------- libjpeg-turbo -------------------
 if skip_if_installed "libjpeg-turbo"; then true; else
-    echo "=== Downloading and building libjpeg-turbo ==="
     cd "${SRC_DIR}"
-    if [ ! -d "libjpeg-turbo-3.1.0" ]; then
-        wget -c https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0.tar.gz -O - | tar -xz
+    if [ ! -d "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" ]; then
+        echo "=== Downloading and building libjpeg-turbo ==="
+        wget -c https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/${LIBJPEG_TURBO_VERSION}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz -O - | tar -xz
     fi
 
-    # Device
-    mkdir -p build_jpeg_device && cd build_jpeg_device
-    cmake "${SRC_DIR}/libjpeg-turbo-3.1.0" \
-        -G Xcode -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" -DPLATFORM=OS64 \
-        -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-        -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=ON -DENABLE_STATIC=ON \
-        -DWITH_TURBOJPEG=ON -DWITH_TOOLS=OFF \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" -Wno-deprecated
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
-    cd ..
-    rm -rf build_jpeg_device
-
-    # Simulator
-    mkdir -p build_jpeg_sim && cd build_jpeg_sim
-    cmake "${SRC_DIR}/libjpeg-turbo-3.1.0" \
-        -G Xcode -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" -DPLATFORM=SIMULATOR64 \
-        -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" -DCMAKE_INSTALL_PREFIX="${PREFIX}_sim" \
-        -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=ON -DENABLE_STATIC=ON \
-        -DWITH_TURBOJPEG=ON -DWITH_TOOLS=OFF \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" -Wno-deprecated
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
-    cd ..
-    rm -rf build_jpeg_sim
-
-    # Merge
-    cd "${PREFIX}/lib"
-    for lib in libjpeg.a libturbojpeg.a; do
-        if [ -f "${PREFIX}_sim/lib/$lib" ]; then
-            lipo -create "$lib" "${PREFIX}_sim/lib/$lib" -output "$lib.universal"
-            mv "$lib.universal" "$lib"
-        fi
-    done
-    rm -f *.dylib
-    cd "${WORK_DIR}"
-    rm -rf "${PREFIX}_sim"
-
-    mark_as_installed "libjpeg-turbo"
+    build_dual_platform "libjpeg-turbo" "${SRC_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" \
+        -DENABLE_SHARED=ON \
+        -DENABLE_STATIC=ON \
+        -DWITH_TURBOJPEG=ON \
+        -DWITH_TOOLS=OFF \
+        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+        -Wno-deprecated
 fi
 
 # ------------------- OpenAL-Soft (universal shared dylib) -------------------
-if skip_if_installed "openal" "OpenAL-Soft"; then true; else
-    echo "=== Downloading and building OpenAL-Soft (shared) ==="
+if skip_if_installed "openal"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "openal-soft-1.24.3" ]; then
-        wget -c https://github.com/kcat/openal-soft/archive/1.24.3.tar.gz -O - | tar -xz
+    if [ ! -d "openal-soft-${OPENAL_VERSION}" ]; then
+        echo "=== Downloading and building OpenAL-Soft (shared) ==="
+        wget -c https://github.com/kcat/openal-soft/archive/${OPENAL_VERSION}.tar.gz -O - | tar -xz
     fi
-    cd openal-soft-1.24.3
-
-    # Device build (shared)
-    echo "=== Building OpenAL-Soft for iOS device (shared) ==="
-    mkdir -p build_openal_device && cd build_openal_device
-    cmake "${SRC_DIR}/openal-soft-1.24.3" \
-        -G Xcode \
-        -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-        -DPLATFORM=OS64 \
-        -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
-        -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-        -DCMAKE_BUILD_TYPE=Release \
+    
+    build_dual_platform "openal" "${SRC_DIR}/openal-soft-${OPENAL_VERSION}" \
         -DALSOFT_EXAMPLES=OFF \
         -DALSOFT_TESTS=OFF \
         -DALSOFT_UTILS=OFF \
@@ -365,96 +530,37 @@ if skip_if_installed "openal" "OpenAL-Soft"; then true; else
         -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
         -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
         -Wno-deprecated
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
-    cd ..
-    rm -rf build_openal_device
-
-    # Simulator build (shared)
-    echo "=== Building OpenAL-Soft for iOS simulator (shared) ==="
-    mkdir -p build_openal_sim && cd build_openal_sim
-    cmake "${SRC_DIR}/openal-soft-1.24.3" \
-        -G Xcode \
-        -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-        -DPLATFORM=SIMULATOR64 \
-        -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
-        -DCMAKE_INSTALL_PREFIX="${PREFIX}_sim" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DALSOFT_EXAMPLES=OFF \
-        -DALSOFT_TESTS=OFF \
-        -DALSOFT_UTILS=OFF \
-        -DALSOFT_NO_CONFIG_UTIL=ON \
-        -DALSOFT_BACKEND_WAVE=OFF \
-        -DALSOFT_REQUIRE_COREAUDIO=ON \
-        -DENABLE_STRICT_TRY_COMPILE=ON \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
-        -Wno-deprecated
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
-    cd ..
-    rm -rf build_openal_sim
-
-    # Merge into universal fat dylib
-    echo "=== Creating universal libopenal.dylib ==="
-    cd "${PREFIX}/lib"
-    if [ -f "${PREFIX}_sim/lib/libopenal.1.dylib" ]; then
-        lipo -create "libopenal.1.dylib" "${PREFIX}_sim/lib/libopenal.1.dylib" -output "libopenal.1.dylib.universal"
-        mv "libopenal.1.dylib.universal" "libopenal.1.dylib"
-        echo "Created universal libopenal.1.dylib"
-    fi
-
-    # Also create the versionless symlink if needed
-    ln -sf libopenal.1.dylib libopenal.dylib
-
-    cd "${WORK_DIR}"
-    rm -rf "${PREFIX}_sim"
-
-    mark_as_installed "openal" "OpenAL-Soft"
 fi
 
 # ------------------- Boost -------------------
 if skip_if_installed "boost"; then true; else
-    echo "=== Downloading and building boost ==="
     cd "${SRC_DIR}"
     if [ ! -d "boost-${BOOST_VERSION}" ]; then
+        echo "=== Downloading and building boost ==="
         wget -c https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz -O - | tar -xz
         
         patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ../../patches/system.diff
         #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ../../patches/regex.diff
     fi
 
-    mkdir -p build_boost && cd build_boost
-    cmake "${SRC_DIR}/boost-${BOOST_VERSION}" \
-        -G Xcode -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" -DPLATFORM="${PLATFORM}" \
-        -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" -Wno-deprecated \
-        -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system"
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
+    build_dual_platform "boost" "${SRC_DIR}/boost-${BOOST_VERSION}" \
+        -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system" \
+        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+        -Wno-deprecated
 
-    xcrun ranlib ${PREFIX}/lib/libboost_{filesystem,program_options,iostreams}.a
-    cd ..
-    rm -rf build_boost
-
-    mark_as_installed "boost"
+    xcrun ranlib ${PREFIX}/OS64/lib/libboost_{filesystem,program_options,iostreams}.a
+    xcrun ranlib ${PREFIX}/SIMULATORARM64/lib/libboost_{filesystem,program_options,iostreams}.a
 fi
 
-# ------------------- FFmpeg (as XCFramework) -------------------
-if skip_if_installed "ffmpeg" "FFmpeg"; then true; else
-    echo "=== Downloading and building FFmpeg (XCFramework) ==="
+# ------------------- FFmpeg -------------------
+if skip_if_installed "ffmpeg"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "ffmpeg-7.1.1" ]; then
-        wget -c https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.bz2 -O - | tar -xjf -
+    if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
+        echo "=== Downloading and building ffmpeg ==="
+        wget -c https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 -O - | tar -xjf -
     fi
-    cd ffmpeg-7.1.1
-
-    # Device build
-    echo "=== Building FFmpeg for iOS device ==="
-    mkdir -p build_ffmpeg_device && cd build_ffmpeg_device
-    ../configure \
+    
+    build_configure_dual_platform "ffmpeg" "${SRC_DIR}/ffmpeg-${FFMPEG_VERSION}" \
         --arch=arm64 \
         --enable-cross-compile \
         --target-os=darwin \
@@ -462,8 +568,6 @@ if skip_if_installed "ffmpeg" "FFmpeg"; then true; else
         --sysroot="$(xcrun --sdk iphoneos --show-sdk-path)" \
         --extra-cflags="-arch arm64 -miphoneos-version-min=${DEPLOYMENT_TARGET} ${COMMON_FLAGS}" \
         --extra-ldflags="-arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
-        --prefix="${PREFIX}/ffmpeg_device" \
-        --enable-static --disable-shared \
         --enable-pic \
         --disable-everything \
         --disable-programs --disable-doc \
@@ -472,107 +576,32 @@ if skip_if_installed "ffmpeg" "FFmpeg"; then true; else
         --enable-demuxer=bink --enable-demuxer=wav --enable-decoder=pcm_* \
         --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=opus --enable-decoder=vorbis \
         --enable-demuxer=matroska --enable-demuxer=ogg \
-        --disable-asm
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ..
-    rm -rf build_ffmpeg_device
-
-    # Simulator build
-    echo "=== Building FFmpeg for iOS simulator ==="
-    mkdir -p build_ffmpeg_sim && cd build_ffmpeg_sim
-    ../configure \
-        --arch=arm64 \
-        --enable-cross-compile \
-        --target-os=darwin \
-        --cc="clang" \
-        --sysroot="$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-        --extra-cflags="-arch arm64 -miphonesimulator-version-min=${DEPLOYMENT_TARGET} ${COMMON_FLAGS}" \
-        --extra-ldflags="-arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" \
-        --prefix="${PREFIX}/ffmpeg_sim" \
-        --enable-static --disable-shared \
-        --enable-pic \
-        --disable-everything \
-        --disable-programs --disable-doc \
-        --enable-decoder=mp3 --enable-demuxer=mp3 \
-        --enable-decoder=bink --enable-decoder=binkaudio_rdft --enable-decoder=binkaudio_dct \
-        --enable-demuxer=bink --enable-demuxer=wav --enable-decoder=pcm_* \
-        --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=opus --enable-decoder=vorbis \
-        --enable-demuxer=matroska --enable-demuxer=ogg \
-        --disable-asm
-    make -j"${BUILD_JOBS}"
-    make install
-    cd ..
-    rm -rf build_ffmpeg_sim
-
-    # Create separate XCFrameworks for each FFmpeg library
-    echo "=== Creating separate XCFrameworks for FFmpeg libraries ==="
-    mkdir -p "${PREFIX}/xcframeworks"
-
-    for lib_name in avcodec avformat avutil swresample swscale; do
-        xcframework_path="${PREFIX}/xcframeworks/lib${lib_name}.xcframework"
-        echo "Creating ${xcframework_path}..."
-
-        rm -rf "${xcframework_path}"  # Clean any old one
-
-        xcodebuild -create-xcframework \
-            -library "${PREFIX}/ffmpeg_device/lib/lib${lib_name}.a" \
-            -headers "${PREFIX}/ffmpeg_device/include" \
-            -library "${PREFIX}/ffmpeg_sim/lib/lib${lib_name}.a" \
-            -headers "${PREFIX}/ffmpeg_sim/include" \
-            -output "${xcframework_path}"
-    done
-
-    # Optional: clean up intermediate dirs
-    rm -rf "${PREFIX}/ffmpeg_device" "${PREFIX}/ffmpeg_sim"
-
-    mark_as_installed "ffmpeg" "FFmpeg"
+        --disable-asm --disable-optimizations
 fi
 
-# ------------------- SDL2 (static, universal) -------------------
-if skip_if_installed "sdl2" "SDL2"; then true; else
-    echo "=== Downloading and building SDL2 ==="
+# ------------------- SDL2 -------------------
+if skip_if_installed "sdl2"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "SDL2-2.32.4" ]; then
-        wget -c https://github.com/libsdl-org/SDL/releases/download/release-2.32.4/SDL2-2.32.4.tar.gz -O - | tar -xz
+    if [ ! -d "SDL2-${SDL2_VERSION}" ]; then
+        echo "=== Downloading and building SDL2 ==="
+        wget -c https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz -O - | tar -xz
     fi
-    cd SDL2-2.32.4
 
-    build_cmake_lib "sdl2" "${SRC_DIR}/SDL2-2.32.4" \
-        -DSDL_STATIC=ON \
-        -DSDL_SHARED=OFF \
-        -DSDL_TEST=OFF \
-        -DSDL_RENDER=ON \
-        -DSDL_VIDEO=ON \
-        -DSDL_AUDIO=ON \
-        -DSDL_OPENGL=OFF \
-        -DSDL_OPENGLES=ON \
-        -DSDL_VULKAN=OFF \
-        -DSDL_METAL=ON \
-        -DSDL_X11=OFF \
-        -DSDL_WAYLAND=OFF \
-        -DSDL_KMSDRM=OFF \
-        -DSDL_IBUS=OFF \
-        -DSDL_DIRECTX=OFF \
-        -DSDL_DISKAUDIO=OFF \
-        -DSDL_DUMMYAUDIO=OFF \
-        -DSDL_DUMMYVIDEO=OFF \
-        -DSDL_FORCE_GCC_ATOMICS=OFF \
+    build_dual_platform "sdl2" "${SRC_DIR}/SDL2-${SDL2_VERSION}" \
+        -DSDL_STATIC=OFF \
+        -DSDL_SHARED=ON \
         -DSDL_FORCE_GCC_FVISIBILITY=OFF
-
-    mark_as_installed "sdl2" "SDL2"
 fi
 
 # ------------------- Bullet Physics -------------------
-if skip_if_installed "bullet" "Bullet Physics"; then true; else
-    echo "=== Downloading and building Bullet Physics (from master) ==="
+if skip_if_installed "bullet"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "bullet3-master" ]; then
-        git clone https://github.com/bulletphysics/bullet3.git bullet3-master
+        echo "=== Downloading and building Bullet Physics (from master) ==="
+        wget -c https://github.com/bulletphysics/bullet3/archive/${BULLET_VERSION}.tar.gz -O - | tar -xz
     fi
-    cd bullet3-master
 
-    build_cmake_lib "bullet" "${SRC_DIR}/bullet3-master" \
+    build_dual_platform "bullet" "${SRC_DIR}/bullet3-${BULLET_VERSION}" \
         -DBUILD_BULLET2_DEMOS=OFF \
         -DBUILD_CPU_DEMOS=OFF \
         -DBUILD_UNIT_TESTS=OFF \
@@ -581,76 +610,20 @@ if skip_if_installed "bullet" "Bullet Physics"; then true; else
         -DBULLET2_MULTITHREADING=ON \
         -DBUILD_SHARED_LIBS=OFF \
         -DINSTALL_LIBS=ON
-
-    mark_as_installed "bullet" "Bullet Physics"
 fi
 
-# # ------------------- GL4ES -------------------
-# if skip_if_installed "gl4es" "GL4ES"; then true; else
-#     echo "=== Downloading and building NG-GL4ES (OpenMW branch) ==="
-#     cd "${SRC_DIR}"
-#
-#     if [ ! -d "gl4es" ]; then
-#         git clone https://github.com/BZLZHH/NG-GL4ES.git gl4es
-#     fi
-#
-#     cd gl4es
-#     git fetch
-#     git submodule init
-#     git submodule update --recursive
-#
-#     sed -i '' '4056s/.*/#ifdef __APPLE__\ntypedef void *GLhandleARB;\n#else\ntypedef unsigned int GLhandleARB;\n#endif/' include/GL/glext.h
-#
-#     echo "=== Building NG-GL4ES (OS64COMBINED) ==="
-#     mkdir -p build_gl4es && cd build_gl4es
-#
-#     cmake "${SRC_DIR}/gl4es" \
-#         -G Xcode \
-#         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-#         -DPLATFORM=OS64COMBINED \
-#         -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
-#         -DCMAKE_INSTALL_PREFIX="${PREFIX}/gl4es" \
-#         -DCMAKE_BUILD_TYPE=Release \
-#         -DNOEGL=ON \
-#         -DNOX11=ON \
-#         -DDEFAULT_ES=2 \
-#         -DSTATICLIB=OFF \
-#         -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
-#         -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
-#         -Wno-deprecated
-#
-#     cmake --build . --config Release --target ng_gl4es -j"${BUILD_JOBS}"
-#     cmake --install . --config Release
-#     cd ..
-#
-#     echo "=== Creating GL4ES.xcframework ==="
-#     mkdir -p "${PREFIX}/xcframeworks"
-#     rm -rf "${PREFIX}/xcframeworks/GL4ES.xcframework"
-#
-#     xcodebuild -create-xcframework \
-#         -library "${PREFIX}/gl4es/lib/libGL.dylib" \
-#         -headers "${PREFIX}/gl4es/include" \
-#         -output "${PREFIX}/xcframeworks/GL4ES.xcframework"
-#
-#     rm -rf "${PREFIX}/gl4es_device" "${PREFIX}/gl4es_sim"
-#
-#     mark_as_installed "gl4es" "GL4ES"
-# fi
-
 # ------------------- MyGUI -------------------
-if skip_if_installed "mygui" "MyGUI"; then true; else
-    echo "=== Downloading and building MyGUI ==="
+if skip_if_installed "mygui"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "mygui-MyGUI3.4.3" ]; then
-        wget -c https://github.com/MyGUI/mygui/archive/MyGUI3.4.3.tar.gz -O - | tar -xz
+    if [ ! -d "mygui-MyGUI${MYGUI_VERSION}" ]; then
+        echo "=== Downloading and building MyGUI ==="
+        wget -c https://github.com/MyGUI/mygui/archive/MyGUI${MYGUI_VERSION}.tar.gz -O - | tar -xz
+        # Patch UString.h for modern C++ (char32_t/char16_t instead of uint32/uint16)
+        sed -i '' 's/using unicode_char = uint32;/using unicode_char = char32_t;/g' MyGUIEngine/include/MyGUI_UString.h
+        sed -i '' 's/using code_point = uint16;/using code_point = char16_t;/g' MyGUIEngine/include/MyGUI_UString.h
     fi
-    cd mygui-MyGUI3.4.3
 
-    # Patch UString.h for modern C++ (char32_t/char16_t instead of uint32/uint16)
-    sed -i '' 's/using unicode_char = uint32;/using unicode_char = char32_t;/g' MyGUIEngine/include/MyGUI_UString.h
-    sed -i '' 's/using code_point = uint16;/using code_point = char16_t;/g' MyGUIEngine/include/MyGUI_UString.h
-
-    build_cmake_lib "mygui" "${SRC_DIR}/mygui-MyGUI3.4.3" \
+    build_dual_platform "mygui" "${SRC_DIR}/mygui-MyGUI${MYGUI_VERSION}" \
         -DMYGUI_RENDERSYSTEM=1 \
         -DMYGUI_BUILD_DEMOS=OFF \
         -DMYGUI_BUILD_TOOLS=OFF \
@@ -658,31 +631,26 @@ if skip_if_installed "mygui" "MyGUI"; then true; else
         -DMYGUI_DONT_USE_OBSOLETE=ON \
         -DMYGUI_STATIC=ON \
         -DBUILD_SHARED_LIBS=OFF
-
-    mark_as_installed "mygui" "MyGUI"
 fi
 
 # ------------------- LZ4 -------------------
-if skip_if_installed "lz4" "LZ4"; then true; else
-    echo "=== Downloading and building LZ4 ==="
+if skip_if_installed "lz4"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "lz4-1.10.0" ]; then
-        wget -c https://github.com/lz4/lz4/archive/v1.10.0.tar.gz -O - | tar -xz
+    if [ ! -d "lz4-${LZ4_VERSION}" ]; then
+        echo "=== Downloading and building LZ4 ==="
+        wget -c https://github.com/lz4/lz4/archive/v${LZ4_VERSION}.tar.gz -O - | tar -xz
     fi
-    cd lz4-1.10.0
 
-    build_cmake_lib "lz4" "${SRC_DIR}/lz4-1.10.0/build/cmake" \
+    build_dual_platform "lz4" "${SRC_DIR}/lz4-${LZ4_VERSION}/build/cmake" \
         -DBUILD_STATIC_LIBS=ON \
         -DBUILD_SHARED_LIBS=OFF
-
-    mark_as_installed "lz4" "LZ4"
 fi
 
 # ------------------- COLLADA-DOM -------------------
-if skip_if_installed "collada" "COLLADA-DOM"; then true; else
-    echo "=== Downloading and building COLLADA-DOM ==="
+if skip_if_installed "collada"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "collada-dom-${COLLADA_DOM_VERSION}" ]; then
+        echo "=== Downloading and building COLLADA-DOM ==="
         wget -c https://github.com/rdiankov/collada-dom/archive/v${COLLADA_DOM_VERSION}.tar.gz -O - | tar -xz
         
         # Create backup with .bak extension
@@ -690,54 +658,28 @@ if skip_if_installed "collada" "COLLADA-DOM"; then true; else
         sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
         sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
     fi
-
-    mkdir -p build_collada_device && cd build_collada_device
-    cmake "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
-        -G Xcode \
-        -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-        -DPLATFORM=OS64 \
-        -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_FLAGS="-std=gnu++11 -DNO_BOOST -DNO_ZAE" \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-    cmake --build . --config Release -j"${BUILD_JOBS}"
-    cmake --install . --config Release
     
-    #cd ..
-    
-    #mkdir -p build_collada_sim && cd build_collada_sim
-
-    #cmake "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
-    #    -G Xcode \
-    #    -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-    #    -DPLATFORM=SIMULATOR64 \
-    #    -DCMAKE_INSTALL_PREFIX="${PREFIX}_sim" \
-    #    -DCMAKE_BUILD_TYPE=Release \
-    #    -DCMAKE_CXX_FLAGS="-std=gnu++11 -DNO_BOOST -DNO_ZAE" \
-    #    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-    #cmake --build . --config Release -j"${BUILD_JOBS}"
-    #cmake --install . --config Release
-        
-    mark_as_installed "collada" "COLLADA-DOM"
+    build_dual_platform "collada" "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
+        -DCMAKE_CXX_FLAGS="-std=gnu++11 -DNO_BOOST -DNO_ZAE"
 fi
 
 # ------------------- OpenSceneGraph -------------------
-if skip_if_installed "osg" "OpenSceneGraph"; then true; else
-    echo "=== Downloading and building OpenSceneGraph ==="
+if skip_if_installed "osg"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "osg-${OSG_VERSION}" ]; then
+        echo "=== Downloading and building osg ==="
         wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
     fi
-    cd osg-${OSG_VERSION}
 
-    build_cmake_lib "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
+    build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
         -DOPENGL_PROFILE=GL2 \
+        -DCMAKE_VERBOSE_MAKEFILE=ON \
+        -DOSG_BUILD_PLATFORM_IPHONE=ON \
+        -DOSG_WINDOWING_SYSTEM=IOS \
         -DDYNAMIC_OPENTHREADS=OFF \
         -DDYNAMIC_OPENSCENEGRAPH=OFF \
         -DBUILD_OSG_PLUGIN_OSG=ON \
-        -DBUILD_OSG_PLUGIN_DAE=ON \
+        -DBUILD_OSG_PLUGIN_DAE=OFF \
         -DBUILD_OSG_PLUGIN_DDS=ON \
         -DBUILD_OSG_PLUGIN_TGA=ON \
         -DBUILD_OSG_PLUGIN_BMP=ON \
@@ -746,9 +688,10 @@ if skip_if_installed "osg" "OpenSceneGraph"; then true; else
         -DBUILD_OSG_PLUGIN_KTX=ON \
         -DBUILD_OSG_PLUGIN_FREETYPE=ON \
         -DOSG_CPP_EXCEPTIONS_AVAILABLE=TRUE \
-        -DJPEG_INCLUDE_DIR="${PREFIX}/include" \
-        -DPNG_INCLUDE_DIR="${PREFIX}/include" \
-        -DCOLLADA_INCLUDE_DIR="${PREFIX}/include/collada-dom2.5" \
+        -DJPEG_INCLUDE_DIR="${PLATFORM_PREFIX}/include/" \
+        -DPNG_INCLUDE_DIR="${PLATFORM_PREFIX}/include/" \
+        -DCOLLADA_INCLUDE_DIR="${PLATFORM_PREFIX}/include/collada-dom2.5/" \
+        -DCOLLADA_DOM_ROOT="${PLATFORM_PREFIX}/include/collada-dom2.5/1.4/dom" \
         -DOSG_GL1_AVAILABLE=ON \
         -DOSG_GL2_AVAILABLE=ON \
         -DOSG_GL3_AVAILABLE=OFF \
@@ -764,11 +707,45 @@ if skip_if_installed "osg" "OpenSceneGraph"; then true; else
         -DBUILD_OSG_PLUGINS_BY_DEFAULT=OFF \
         -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF \
         -DOSG_FIND_3RD_PARTY_DEPS=OFF \
-        -DOPENGL_INCLUDE_DIR="${PREFIX}/include" \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DCMAKE_CXX_FLAGS="-std=gnu++11 -I${PREFIX}/include/freetype2"
+        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/" \
+        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
+        -DCMAKE_CXX_FLAGS="-std=gnu++11 -I${PLATFORM_PREFIX}/include/freetype2" \
+        -Wno-dev
+fi
 
-    mark_as_installed "osg" "OpenSceneGraph"
+# ------------------- OpenMW -------------------
+if skip_if_installed "openmw"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
+        echo "=== Downloading and building OpenMW ==="
+        wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
+    fi
+
+    build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \
+        -DBUILD_BSATOOL=0 \
+        -DBUILD_NIFTEST=0 \
+        -DBUILD_ESMTOOL=0 \
+        -DBUILD_LAUNCHER=0 \
+        -DBUILD_MWINIIMPORTER=0 \
+        -DBUILD_ESSIMPORTER=0 \
+        -DBUILD_OPENCS=0 \
+        -DBUILD_NAVMESHTOOL=0 \
+        -DBUILD_WIZARD=0 \
+        -DBUILD_MYGUI_PLUGIN=0 \
+        -DBUILD_BULLETOBJECTTOOL=0 \
+        -DOPENMW_USE_SYSTEM_SQLITE3=OFF \
+        -DOPENMW_USE_SYSTEM_YAML_CPP=OFF \
+        -DOPENMW_USE_SYSTEM_ICU=ON \
+        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/" \
+        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
+        -DOPENGL_glx_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
+        -DOPENAL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/AL/" \
+        -DBullet_INCLUDE_DIR="${PLATFORM_PREFIX}/include/bullet/" \
+        -DOSG_STATIC=TRUE \
+        -DUSE_LUAJIT=OFF \
+        -DMyGUI_LIBRARY="${PLATFORM_PREFIX}/lib/libMyGUIEngineStatic.a" \
+        -DCMAKE_CXX_FLAGS="-std=gnu++20 -I${PLATFORM_PREFIX}/include ${CXXFLAGS}" \
+        -Wno-dev
 fi
 
 echo "=== All done! ==="
@@ -776,3 +753,4 @@ echo "Libraries are in: ${PREFIX}"
 echo "To force rebuild a library, run:"
 echo "  rm ${MARKERS_DIR}/<name>.installed"
 echo "Then re-run the script."
+
