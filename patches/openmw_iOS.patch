@@ -1,0 +1,165 @@
+From a4fa3475236c17595bc8d36f9c1fb05fc49310b5 Mon Sep 17 00:00:00 2001
+From: Duron27 <duron27@gmail.com>
+Date: Mon, 12 Jan 2026 17:18:24 -0500
+Subject: [PATCH] iOS
+
+---
+ CMakeLists.txt             |  2 +-
+ apps/openmw/CMakeLists.txt | 84 +++++++++++++++++++++++++++-----------
+ cmake/WholeArchive.cmake   |  9 +++-
+ components/CMakeLists.txt  |  7 +++-
+ 4 files changed, 75 insertions(+), 27 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f7b747d..9c2eb2a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -268,7 +268,7 @@ set(USED_OSG_COMPONENTS
+     )
+ set(USED_OSG_PLUGINS
+     osgdb_bmp
+-    osgdb_dae
++#   osgdb_dae
+     osgdb_dds
+     osgdb_freetype
+     osgdb_jpeg
+diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
+index 8570d9d..ec344f6 100644
+--- a/apps/openmw/CMakeLists.txt
++++ b/apps/openmw/CMakeLists.txt
+@@ -221,30 +221,66 @@ if (UNIX AND NOT APPLE)
+ endif()
+ 
+ if(APPLE AND BUILD_OPENMW)
+-    set(BUNDLE_RESOURCES_DIR "${APP_BUNDLE_DIR}/Contents/Resources")
+-
+-    set(OPENMW_RESOURCES_ROOT ${BUNDLE_RESOURCES_DIR})
+-
+-    add_subdirectory(../../files/ ${CMAKE_CURRENT_BINARY_DIR}/files)
+-
+-    configure_file("${OpenMW_BINARY_DIR}/defaults.bin" ${BUNDLE_RESOURCES_DIR} COPYONLY)
+-    configure_file("${OpenMW_BINARY_DIR}/openmw.cfg" ${BUNDLE_RESOURCES_DIR} COPYONLY)
+-    configure_file("${OpenMW_BINARY_DIR}/gamecontrollerdb.txt" ${BUNDLE_RESOURCES_DIR} COPYONLY)
+-
+-    add_custom_command(TARGET openmw
+-        POST_BUILD
+-        COMMAND cp "${OpenMW_BINARY_DIR}/resources/version" "${BUNDLE_RESOURCES_DIR}/resources")
+-
+-    find_library(COCOA_FRAMEWORK Cocoa)
+-    find_library(IOKIT_FRAMEWORK IOKit)
+-    target_link_libraries(openmw ${COCOA_FRAMEWORK} ${IOKIT_FRAMEWORK})
+-
+-    if (FFmpeg_FOUND)
+-        target_link_options(openmw PRIVATE "LINKER:SHELL:-framework CoreVideo"
+-                                           "LINKER:SHELL:-framework CoreMedia"
+-                                           "LINKER:SHELL:-framework VideoToolbox"
+-                                           "LINKER:SHELL:-framework AudioToolbox"
+-                                           "LINKER:SHELL:-framework VideoDecodeAcceleration")
++    if(CMAKE_OSX_SYSROOT MATCHES "iphoneos" OR CMAKE_SYSTEM_NAME MATCHES "iOS" OR IOS)
++        # iOS specific setup
++        set(OPENMW_RESOURCES_ROOT "${CMAKE_CURRENT_BINARY_DIR}/Resources")
++        
++#        set_target_properties(openmw PROPERTIES
++#            MACOSX_BUNDLE TRUE
++#            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
++#            RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets"
++#        )
++        
++        find_library(UIKIT_FRAMEWORK UIKit)
++        find_library(FOUNDATION_FRAMEWORK Foundation)
++        find_library(COREGRAPHICS_FRAMEWORK CoreGraphics)
++        find_library(QUARTZCORE_FRAMEWORK QuartzCore)
++        
++        target_link_libraries(openmw
++            ${UIKIT_FRAMEWORK}
++            ${FOUNDATION_FRAMEWORK}
++            ${COREGRAPHICS_FRAMEWORK}
++            ${QUARTZCORE_FRAMEWORK}
++        )
++        
++        if (FFmpeg_FOUND)
++            # iOS uses AVFoundation for media
++            find_library(AVFOUNDATION_FRAMEWORK AVFoundation)
++            find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox)
++            find_library(VIDEOTOOLBOX_FRAMEWORK VideoToolbox)
++            find_library(COREMEDIA_FRAMEWORK CoreMedia)
++            find_library(COREVIDEO_FRAMEWORK CoreVideo)
++            
++            target_link_libraries(openmw
++                ${AVFOUNDATION_FRAMEWORK}
++                ${AUDIOTOOLBOX_FRAMEWORK}
++                ${VIDEOTOOLBOX_FRAMEWORK}
++                ${COREMEDIA_FRAMEWORK}
++                ${COREVIDEO_FRAMEWORK}
++            )
++        endif()
++    else()
++        # macOS setup (original code)
++        set(BUNDLE_RESOURCES_DIR "${APP_BUNDLE_DIR}/Contents/Resources")
++        set(OPENMW_RESOURCES_ROOT ${BUNDLE_RESOURCES_DIR})
++        
++        add_subdirectory(../../files/ ${CMAKE_CURRENT_BINARY_DIR}/files)
++        
++        add_custom_command(TARGET openmw
++            POST_BUILD
++            COMMAND cp "${OpenMW_BINARY_DIR}/resources/version" "${BUNDLE_RESOURCES_DIR}/resources")
++        
++        find_library(COCOA_FRAMEWORK Cocoa)
++        find_library(IOKIT_FRAMEWORK IOKit)
++        target_link_libraries(openmw ${COCOA_FRAMEWORK} ${IOKIT_FRAMEWORK})
++        
++        if (FFmpeg_FOUND)
++            target_link_options(openmw PRIVATE "LINKER:SHELL:-framework CoreVideo"
++                                               "LINKER:SHELL:-framework CoreMedia"
++                                               "LINKER:SHELL:-framework VideoToolbox"
++                                               "LINKER:SHELL:-framework AudioToolbox"
++                                               "LINKER:SHELL:-framework VideoDecodeAcceleration")
++        endif()
+     endif()
+ endif()
+ 
+diff --git a/cmake/WholeArchive.cmake b/cmake/WholeArchive.cmake
+index 0e4a09c..6819a96 100644
+--- a/cmake/WholeArchive.cmake
++++ b/cmake/WholeArchive.cmake
+@@ -3,7 +3,14 @@ function (get_whole_archive_options OUT_VAR)
+     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+         set(${OUT_VAR} -Wl,--whole-archive ${ARGN} -Wl,--no-whole-archive PARENT_SCOPE)
+     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+-        set(${OUT_VAR} -Wl,-all_load ${ARGN} -Wl,-noall_load PARENT_SCOPE)
++        # Check if building for iOS
++        if(CMAKE_OSX_SYSROOT MATCHES "iphoneos" OR CMAKE_SYSTEM_NAME MATCHES "iOS" OR IOS)
++            # iOS: don't use -noall_load
++            set(${OUT_VAR} -Wl,-all_load ${ARGN} PARENT_SCOPE)
++        else()
++            # macOS: use both flags
++            set(${OUT_VAR} -Wl,-all_load ${ARGN} -Wl,-noall_load PARENT_SCOPE)
++        endif()
+     else ()
+         message(FATAL_ERROR "get_whole_archive_options not implemented for CMAKE_CXX_COMPILER_ID ${CMAKE_CXX_COMPILER_ID}")
+     endif()
+diff --git a/components/CMakeLists.txt b/components/CMakeLists.txt
+index 76d4722..73d0a8f 100644
+--- a/components/CMakeLists.txt
++++ b/components/CMakeLists.txt
+@@ -5,6 +5,11 @@ if(APPLE)
+     set(OPENMW_RESOURCES_ROOT ${BUNDLE_RESOURCES_DIR})
+ endif(APPLE)
+ 
++# Detect iOS
++if(CMAKE_SYSTEM_NAME MATCHES "iOS" OR CMAKE_OSX_SYSROOT MATCHES "iphoneos")
++    set(IOS TRUE)
++endif()
++
+ # Version file
+ set (VERSION_RESOURCE_FILE_IN "${OpenMW_SOURCE_DIR}/files/version.in")
+ set (VERSION_RESOURCE_FILE_RELATIVE "resources/version")
+@@ -400,7 +405,7 @@ if(WIN32)
+         windowscrashmonitor
+         windowscrashshm
+     )
+-elseif(NOT ANDROID)
++elseif(NOT ANDROID AND NOT IOS)
+     add_component_dir (crashcatcher
+         crashcatcher
+     )

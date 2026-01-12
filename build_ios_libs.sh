@@ -44,6 +44,7 @@ GL4ES_VERSION=2d7949c0ad55e850f9aa9ed28f5e6ff6490984ee
 COLLADA_DOM_VERSION=2.5.0
 OSG_VERSION=495b370da37d9e3c739914a190f9821884619a4a
 LZ4_VERSION=1.10.0
+LUA_VERSION=5.1.5
 LUAJIT_VERSION=2.1.ROLLING
 OPENMW_VERSION=96565e9afb9bbebf77c1bbc108d5bf4f9bee2e6f
 RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
@@ -102,7 +103,7 @@ build_configure_platform_lib() {
         MIN_VERSION_FLAG="-miphoneos-version-min=${DEPLOYMENT_TARGET}"
     else  # SIMULATORARM64
         IOS_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-        ARCH="arm64"
+        ARCH="arm64"  # Apple Silicon simulators use arm64
         MIN_VERSION_FLAG="-mios-simulator-version-min=${DEPLOYMENT_TARGET}"
     fi
     
@@ -223,6 +224,14 @@ build_platform_lib() {
         -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
         -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/" \
+        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/" \
+        -DMyGUI_LIBRARY="${install_prefix}/lib/libMyGUIEngineStatic.a" \
+        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENGL_glx_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENAL_INCLUDE_DIR="${install_prefix}/include/AL/" \
+        -DBullet_INCLUDE_DIR="${install_prefix}/include/bullet/" \
         "${extra_args[@]}"
     
     cmake --build . --config Release -j"${BUILD_JOBS}"
@@ -325,7 +334,6 @@ if skip_if_installed "icu"; then true; else
 fi
 
 # ------------------- Lua 5.1 (Makefile approach) -------------------
-LUA_VERSION="5.1.5"
 
 if skip_if_installed "lua_download"; then true; else
     echo "=== Downloading Lua ${LUA_VERSION} ==="
@@ -415,6 +423,18 @@ if skip_if_installed "bzip2"; then true; else
         -DBUILD_STATIC_LIBS=ON \
         -DENABLE_APP=OFF
 fi
+
+# ------------------- Luajit -------------------
+#if skip_if_installed "luajit"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "luajit" ]; then
+#        echo "=== Downloading and building luajit ==="
+#        git clone https://github.com/zhaozg/luajit-cmake.git
+#    fi
+#
+#    build_dual_platform "luajit" "${SRC_DIR}/luajit-cmake" \
+#        -DLUAJIT_DIR=${SRC_DIR}/tem
+#fi
 
 # ------------------- Zlib -------------------
 if skip_if_installed "zlib"; then true; else
@@ -668,7 +688,7 @@ if skip_if_installed "osg"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
-        wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
+        #wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
@@ -718,7 +738,7 @@ if skip_if_installed "openmw"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
-        wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
+        #wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \
@@ -736,15 +756,9 @@ if skip_if_installed "openmw"; then true; else
         -DOPENMW_USE_SYSTEM_SQLITE3=OFF \
         -DOPENMW_USE_SYSTEM_YAML_CPP=OFF \
         -DOPENMW_USE_SYSTEM_ICU=ON \
-        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/" \
-        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
-        -DOPENGL_glx_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
-        -DOPENAL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/AL/" \
-        -DBullet_INCLUDE_DIR="${PLATFORM_PREFIX}/include/bullet/" \
         -DOSG_STATIC=TRUE \
         -DUSE_LUAJIT=OFF \
-        -DMyGUI_LIBRARY="${PLATFORM_PREFIX}/lib/libMyGUIEngineStatic.a" \
-        -DCMAKE_CXX_FLAGS="-std=gnu++20 -I${PLATFORM_PREFIX}/include ${CXXFLAGS}" \
+        -DCMAKE_CXX_FLAGS="-std=gnu++20 ${CXXFLAGS}" \
         -Wno-dev
 fi
 
@@ -753,4 +767,3 @@ echo "Libraries are in: ${PREFIX}"
 echo "To force rebuild a library, run:"
 echo "  rm ${MARKERS_DIR}/<name>.installed"
 echo "Then re-run the script."
-
