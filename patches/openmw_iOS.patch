@@ -23,6 +23,15 @@ index f7b747d..9c2eb2a 100644
      osgdb_dds
      osgdb_freetype
      osgdb_jpeg
+@@ -473,7 +473,7 @@ else(USE_LUAJIT)
+     add_compile_definitions(NO_LUAJIT)
+ endif(USE_LUAJIT)
+ if (NOT WIN32 AND NOT ANDROID)
+-    include(cmake/CheckLuaCustomAllocator.cmake)
++#    include(cmake/CheckLuaCustomAllocator.cmake)
+ endif()
+
+ # C++ library binding to Lua
 diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
 index 8570d9d..ec344f6 100644
 --- a/apps/openmw/CMakeLists.txt

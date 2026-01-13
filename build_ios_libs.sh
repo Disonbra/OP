@@ -25,11 +25,12 @@ SIM_PREFIX="${PREFIX}/SIMULATORARM64"
 MARKERS_DIR="${PREFIX}/markers"
 BUILD_JOBS=$(sysctl -n hw.logicalcpu)
 
-DEPLOYMENT_TARGET="17.0"
+DEPLOYMENT_TARGET="26.2"
 COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
 
 LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
+BROTLI_VERSION=1.2.0
 FREETYPE2_VERSION=2.13.3
 OPENAL_VERSION=1.24.3
 BOOST_VERSION=1.88.0
@@ -222,16 +223,8 @@ build_platform_lib() {
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_FIND_ROOT_PATH="${install_prefix}" \
         -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+        -DCMAKE_CXX_FLAGS="-I${install_prefix}/include/ ${COMMON_FLAGS}" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/" \
-        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
-        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/" \
-        -DMyGUI_LIBRARY="${install_prefix}/lib/libMyGUIEngineStatic.a" \
-        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
-        -DOPENGL_glx_LIBRARY="${install_prefix}/lib/libGL.dylib" \
-        -DOPENAL_INCLUDE_DIR="${install_prefix}/include/AL/" \
-        -DBullet_INCLUDE_DIR="${install_prefix}/include/bullet/" \
         "${extra_args[@]}"
     
     cmake --build . --config Release -j"${BUILD_JOBS}"
@@ -254,54 +247,6 @@ build_platform_lib() {
     fi
     
     cd ..
-}
-
-# ------------------- Utility functions -------------------
-switch_to_device() {
-    echo "=== Switching to device libraries ==="
-    rm -f "${PREFIX}/lib"
-    ln -sf "${DEVICE_PREFIX}" "${PREFIX}/active"
-    echo "Now using device libraries"
-}
-
-switch_to_simulator() {
-    echo "=== Switching to simulator libraries ==="
-    rm -f "${PREFIX}/lib"
-    ln -sf "${SIM_PREFIX}" "${PREFIX}/active"
-    echo "Now using simulator libraries"
-}
-
-create_universal() {
-    local lib_name="$1"
-    echo "=== Creating universal ${lib_name} ==="
-    
-    mkdir -p "${UNIVERSAL_PREFIX}/lib"
-    
-    if [ -f "${DEVICE_PREFIX}/lib/${lib_name}" ] && [ -f "${SIM_PREFIX}/lib/${lib_name}" ]; then
-        lipo -create \
-            "${DEVICE_PREFIX}/lib/${lib_name}" \
-            "${SIM_PREFIX}/lib/${lib_name}" \
-            -output "${UNIVERSAL_PREFIX}/lib/${lib_name}"
-        echo "Created ${UNIVERSAL_PREFIX}/lib/${lib_name}"
-    else
-        echo "Warning: Missing device or simulator library for ${lib_name}"
-    fi
-}
-
-# Create symbolic links for easy switching
-setup_links() {
-    echo "=== Setting up library links ==="
-    
-    # Create active symlink (default to device)
-    ln -sfn "${DEVICE_PREFIX}" "${PREFIX}/active"
-    
-    # Create include symlink (headers are usually same)
-    if [ -d "${DEVICE_PREFIX}/include" ]; then
-        ln -sf "${DEVICE_PREFIX}/include" "${PREFIX}/include"
-    fi
-    
-    echo "Active libraries: device"
-    echo "Use 'switch_to_simulator' to change"
 }
 
 # ------------------- ICU (universal static, device + simulator) -------------------
@@ -333,83 +278,6 @@ if skip_if_installed "icu"; then true; else
         --with-cross-build="${SRC_DIR}/icu_host_build"
 fi
 
-# ------------------- Lua 5.1 (Makefile approach) -------------------
-
-if skip_if_installed "lua_download"; then true; else
-    echo "=== Downloading Lua ${LUA_VERSION} ==="
-    cd "${SRC_DIR}"
-    if [ ! -d "lua-${LUA_VERSION}" ]; then
-        wget -c https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz -O - | tar -xz
-    fi
-    mark_as_installed "lua_download"
-fi
-
-# Function to build Lua for a specific platform
-build_lua_for_platform() {
-    local platform="$1"  # "device" or "simulator"
-    local platform_dir="$2"  # "OS64" or "SIMULATORARM64"
-    
-    echo "=== Building Lua ${LUA_VERSION} for ${platform} ==="
-    
-    cd "${SRC_DIR}/lua-${LUA_VERSION}"
-    
-    # Platform-specific SDK settings
-    if [ "${platform}" = "device" ]; then
-        SDK="iphoneos"
-        ARCH="arm64"
-        MIN_VERSION_FLAG="-miphoneos-version-min=${DEPLOYMENT_TARGET}"
-    else
-        SDK="iphonesimulator"
-        ARCH="x86_64"  # For Intel Mac simulators, or "arm64" for Apple Silicon
-        MIN_VERSION_FLAG="-mios-simulator-version-min=${DEPLOYMENT_TARGET}"
-    fi
-    
-    SDKROOT=$(xcrun --sdk "${SDK}" --show-sdk-path)
-    CC=$(xcrun --sdk "${SDK}" --find clang)
-    
-    # Set up environment for cross-compilation
-    export CC="${CC} -arch ${ARCH} -isysroot ${SDKROOT} ${MIN_VERSION_FLAG} -fPIC"
-    export AR="ar rcu"
-    export RANLIB="ranlib"
-    export MYCFLAGS="-O2 -fPIC ${COMMON_FLAGS}"
-    export MYLDFLAGS=""
-    
-    # Clean previous build
-    make clean 2>/dev/null || true
-    
-    # Build the library
-    make generic
-    
-    # Install headers and library to platform-specific directory
-    local install_prefix="${PREFIX}/${platform_dir}"
-    mkdir -p "${install_prefix}/include" "${install_prefix}/lib"
-    
-    # Copy headers
-    cp src/lua.h src/luaconf.h src/lualib.h src/lauxlib.h "${install_prefix}/include/"
-    
-    # Copy library (handle different names)
-    if [ -f "src/liblua.a" ]; then
-        cp src/liblua.a "${install_prefix}/lib/"
-    elif [ -f "src/liblua5.1.a" ]; then
-        cp src/liblua5.1.a "${install_prefix}/lib/"
-        ln -sf "${install_prefix}/lib/liblua5.1.a" "${install_prefix}/lib/liblua.a"
-    fi
-    
-    echo "✓ Lua built for ${platform}"
-}
-
-# Build for device (OS64)
-if skip_if_installed "lua_device"; then true; else
-    build_lua_for_platform "device" "OS64"
-    mark_as_installed "lua_device"
-fi
-
-# Build for simulator (SIMULATORARM64)
-if skip_if_installed "lua_sim"; then true; else
-    build_lua_for_platform "simulator" "SIMULATORARM64"
-    mark_as_installed "lua_sim"
-fi
-
 # ------------------- Bzip2 -------------------
 if skip_if_installed "bzip2"; then true; else
     cd "${SRC_DIR}"
@@ -425,16 +293,28 @@ if skip_if_installed "bzip2"; then true; else
 fi
 
 # ------------------- Luajit -------------------
-#if skip_if_installed "luajit"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "luajit" ]; then
-#        echo "=== Downloading and building luajit ==="
-#        git clone https://github.com/zhaozg/luajit-cmake.git
-#    fi
-#
-#    build_dual_platform "luajit" "${SRC_DIR}/luajit-cmake" \
-#        -DLUAJIT_DIR=${SRC_DIR}/tem
-#fi
+if skip_if_installed "luajit"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "luajit" ]; then
+        echo "=== Downloading and building luajit ==="
+        git clone https://github.com/mpvkit/libluajit-build.git luajit
+    fi
+    
+    cd luajit
+    make build platform=ios,isimulator XCFLAGS+="-DLUAJIT_ENABLE_GC64"
+    
+    # Copy include files to both device and simulator prefixes
+    echo "=== Copying Luajit headers ==="
+    cp -Rf dist/release/libluajit/include/luajit-2.1/* "${DEVICE_PREFIX}/include/"
+    cp -Rf dist/release/libluajit/include/luajit-2.1/* "${SIM_PREFIX}/include/"
+    
+    # Copy libraries to respective prefixes
+    echo "=== Copying Luajit libraries ==="
+    cp -f dist/release/libluajit/lib/ios/thin/arm64/lib/libluajit.a "${DEVICE_PREFIX}/lib/"
+    cp -f dist/release/libluajit/lib/isimulator/thin/arm64/lib/libluajit.a "${SIM_PREFIX}/lib/"
+    
+    mark_as_installed "luajit"
+fi
 
 # ------------------- Zlib -------------------
 if skip_if_installed "zlib"; then true; else
@@ -460,6 +340,21 @@ if skip_if_installed "libpng"; then true; else
         --host=arm-apple-darwin
 fi
 
+# ------------------- brotli -------------------
+#if skip_if_installed "brotli"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "brotli-${BROTLI_VERSION}" ]; then
+#        echo "=== Downloading and building brotli ==="
+#        wget -c "https://github.com/google/brotli/archive/refs/tags/v${BROTLI_VERSION}.tar.gz" -O - | tar -xz
+#    fi
+
+    # For iOS builds, we need to disable shared libraries and build static
+#    build_dual_platform "brotli" "${SRC_DIR}/brotli-${BROTLI_VERSION}" \
+#        -DBUILD_SHARED_LIBS=OFF \
+#        -DBROTLI_DISABLE_TESTS=ON \
+#        -DBROTLI_BUNDLED_MODE=OFF
+#fi
+
 # ------------------- FreeType -------------------
 if skip_if_installed "freetype"; then true; else
     cd "${SRC_DIR}"
@@ -469,10 +364,31 @@ if skip_if_installed "freetype"; then true; else
     fi
     
     build_dual_platform "freetype" "${SRC_DIR}/freetype-${FREETYPE2_VERSION}" \
-        -DCMAKE_DISABLE_FIND_PACKAGE_BZip2=OFF \
-        -DCMAKE_DISABLE_FIND_PACKAGE_PNG=OFF \
-        -DCMAKE_DISABLE_FIND_PACKAGE_ZLIB=OFF
+        -DCMAKE_FT_DISABLE_BZIP2=ON \
+        -DCMAKE_FT_DISABLE_PNG=ON \
+        -DCMAKE_FT_DISABLE_BROTLI=ON
 fi
+
+# ------------------- NG-GL4ES -------------------
+#if skip_if_installed "ng-gl4es"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "ng-gl4es" ]; then
+#        echo "=== Downloading and building NG-GL4ES (OpenMW branch) ==="
+#        wget -c https://github.com/Duron27/NG-GL4ES/archive/refs/heads/iOS.zip -O iOS.zip
+#        unzip -q iOS.zip
+#        mv NG-GL4ES-iOS ng-gl4es
+#        rm -f iOS.zip
+#    fi
+    
+#    build_dual_platform "ng-gl4es" "${SRC_DIR}/ng-gl4es" \
+#        -DNOEGL=ON \
+#        -DNOX11=ON \
+#        -DDEFAULT_ES=2 \
+#        -DSTATICLIB=OFF \
+#        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+#        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+#        -Wno-deprecated
+#fi
 
 # ------------------- GL4ES -------------------
 if skip_if_installed "gl4es"; then true; else
@@ -480,7 +396,8 @@ if skip_if_installed "gl4es"; then true; else
     if [ ! -d "gl4es" ]; then
         echo "=== Downloading and building GL4ES (OpenMW branch) ==="
         git clone https://github.com/ptitSeb/gl4es.git gl4es
-        sed -i '' 's/#ifdef __GNUC__/#if defined(__GNUC__) \&\& !defined(__APPLE__)/' gl4es/src/gl/attributes.h
+        #sed -i '' 's/#ifdef __GNUC__/#if defined(__GNUC__) \&\& !defined(__APPLE__)/' gl4es/src/gl/attributes.h
+        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
     fi
     
     build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
@@ -488,8 +405,8 @@ if skip_if_installed "gl4es"; then true; else
         -DNOX11=ON \
         -DDEFAULT_ES=2 \
         -DSTATICLIB=OFF \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
+        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
         -Wno-deprecated
 fi
 
@@ -547,8 +464,8 @@ if skip_if_installed "openal"; then true; else
         -DALSOFT_REQUIRE_COREAUDIO=ON \
         -DENABLE_STRICT_TRY_COMPILE=ON \
         -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS} -fPIC" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS} -fPIC" \
+        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
         -Wno-deprecated
 fi
 
@@ -616,7 +533,7 @@ fi
 # ------------------- Bullet Physics -------------------
 if skip_if_installed "bullet"; then true; else
     cd "${SRC_DIR}"
-    if [ ! -d "bullet3-master" ]; then
+    if [ ! -d "bullet3-${BULLET_VERSION}" ]; then
         echo "=== Downloading and building Bullet Physics (from master) ==="
         wget -c https://github.com/bulletphysics/bullet3/archive/${BULLET_VERSION}.tar.gz -O - | tar -xz
     fi
@@ -639,8 +556,8 @@ if skip_if_installed "mygui"; then true; else
         echo "=== Downloading and building MyGUI ==="
         wget -c https://github.com/MyGUI/mygui/archive/MyGUI${MYGUI_VERSION}.tar.gz -O - | tar -xz
         # Patch UString.h for modern C++ (char32_t/char16_t instead of uint32/uint16)
-        sed -i '' 's/using unicode_char = uint32;/using unicode_char = char32_t;/g' MyGUIEngine/include/MyGUI_UString.h
-        sed -i '' 's/using code_point = uint16;/using code_point = char16_t;/g' MyGUIEngine/include/MyGUI_UString.h
+        #sed -i '' 's/using unicode_char = uint32;/using unicode_char = char32_t;/g' MyGUIEngine/include/MyGUI_UString.h
+        #sed -i '' 's/using code_point = uint16;/using code_point = char16_t;/g' MyGUIEngine/include/MyGUI_UString.h
     fi
 
     build_dual_platform "mygui" "${SRC_DIR}/mygui-MyGUI${MYGUI_VERSION}" \
@@ -680,7 +597,10 @@ if skip_if_installed "collada"; then true; else
     fi
     
     build_dual_platform "collada" "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
-        -DCMAKE_CXX_FLAGS="-std=gnu++11 -DNO_BOOST -DNO_ZAE"
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_STANDARD=11 \
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+        -DCMAKE_CXX_FLAGS="-DNO_BOOST -DNO_ZAE ${COMMON_FLAGS}"
 fi
 
 # ------------------- OpenSceneGraph -------------------
@@ -688,11 +608,12 @@ if skip_if_installed "osg"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
-        #wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
+        wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ../../patches/osg_iOS.patch
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
-        -DOPENGL_PROFILE=GL2 \
+        -DOPENGL_PROFILE=GL1 \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DOSG_BUILD_PLATFORM_IPHONE=ON \
         -DOSG_WINDOWING_SYSTEM=IOS \
@@ -712,13 +633,14 @@ if skip_if_installed "osg"; then true; else
         -DPNG_INCLUDE_DIR="${PLATFORM_PREFIX}/include/" \
         -DCOLLADA_INCLUDE_DIR="${PLATFORM_PREFIX}/include/collada-dom2.5/" \
         -DCOLLADA_DOM_ROOT="${PLATFORM_PREFIX}/include/collada-dom2.5/1.4/dom" \
+        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/include/" \
         -DOSG_GL1_AVAILABLE=ON \
-        -DOSG_GL2_AVAILABLE=ON \
+        -DOSG_GL2_AVAILABLE=OFF \
         -DOSG_GL3_AVAILABLE=OFF \
         -DOSG_GLES1_AVAILABLE=OFF \
         -DOSG_GLES2_AVAILABLE=OFF \
         -DOSG_GL_LIBRARY_STATIC=OFF \
-        -DOSG_GL_DISPLAYLISTS_AVAILABLE=ON \
+        -DOSG_GL_DISPLAYLISTS_AVAILABLE=OFF \
         -DOSG_GL_MATRICES_AVAILABLE=ON \
         -DOSG_GL_VERTEX_FUNCS_AVAILABLE=ON \
         -DOSG_GL_VERTEX_ARRAY_FUNCS_AVAILABLE=ON \
@@ -727,9 +649,10 @@ if skip_if_installed "osg"; then true; else
         -DBUILD_OSG_PLUGINS_BY_DEFAULT=OFF \
         -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF \
         -DOSG_FIND_3RD_PARTY_DEPS=OFF \
-        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/" \
-        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
-        -DCMAKE_CXX_FLAGS="-std=gnu++11 -I${PLATFORM_PREFIX}/include/freetype2" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_STANDARD=11 \
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+        -DCMAKE_CXX_FLAGS="-I${PLATFORM_PREFIX}/include/freetype2 ${COMMON_FLAGS}" \
         -Wno-dev
 fi
 
@@ -738,7 +661,8 @@ if skip_if_installed "openmw"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
-        #wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
+        wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/openmw_iOS.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \
@@ -756,8 +680,14 @@ if skip_if_installed "openmw"; then true; else
         -DOPENMW_USE_SYSTEM_SQLITE3=OFF \
         -DOPENMW_USE_SYSTEM_YAML_CPP=OFF \
         -DOPENMW_USE_SYSTEM_ICU=ON \
+        -DLUA_HAS_CUSTOM_ALLOCATOR=ON \
         -DOSG_STATIC=TRUE \
-        -DUSE_LUAJIT=OFF \
+        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/include/" \
+        -DMyGUI_LIBRARY="${PLATFORM_PREFIX}/lib/libMyGUIEngineStatic.a" \
+        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
+        -DOPENGL_glx_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
+        -DOPENAL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/AL/" \
+        -DBullet_INCLUDE_DIR="${PLATFORM_PREFIX}/include/bullet/" \
         -DCMAKE_CXX_FLAGS="-std=gnu++20 ${CXXFLAGS}" \
         -Wno-dev
 fi
