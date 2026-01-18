@@ -1,0 +1,66 @@
+# ment to be used to patch "git clone https://github.com/khanhduytran0/gl4es.git gl4es"
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6f5d2a66..f85a4fcc 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -141,6 +141,7 @@ if(USE_CCACHE)
+     endif()
+ endif()
+ 
++
+ link_directories(${CMAKE_SOURCE_DIR}/lib)
+ add_definitions(-std=gnu11 -funwind-tables -fvisibility=default)
+ 
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 57dbdfe9..e976c1e0 100755
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -49,7 +49,6 @@ SET(GL_SRC
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/queries.c
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/raster.c
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/render.c
+-    ${CMAKE_CURRENT_SOURCE_DIR}/gl/samplers.c
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/shader.c
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/shaderconv.c
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl/shader_hacks.c
+@@ -222,11 +221,5 @@ else()
+     if(CMAKE_SHARED_LIBRARY_SUFFIX MATCHES ".so")
+         set_target_properties(GL PROPERTIES SUFFIX ".so.1")
+     endif()
+-    install(TARGETS GL
+-      LIBRARY
+-      DESTINATION "/usr/lib/gl4es/"
+-    )
+-    install(FILES "../include/gl4esinit.h" "../include/gl4eshint.h"
+-      DESTINATION "/usr/include/gl4es/"
+-    )
++
+ endif()
+diff --git a/src/gl/directstate.c b/src/gl/directstate.c
+index 857512d4..590d1c96 100755
+--- a/src/gl/directstate.c
++++ b/src/gl/directstate.c
+@@ -366,7 +366,7 @@ void gl4es_glEnableClientStateIndexed(GLenum array, GLuint index) {
+         errorShim(GL_INVALID_ENUM);
+     }
+ }
+-void gl4es_glEnableClientStatei(GLenum array, GLuint index) { gl4es_glEnableClientStateIndexed(array, index); }
++//void gl4es_glEnableClientStatei(GLenum array, GLuint index) { gl4es_glEnableClientStateIndexed(array, index); }
+ void gl4es_glDisableClientStateIndexed(GLenum array, GLuint index) {
+     DBG(printf("glDisableClientStateIndexed(%s, %d)\n", PrintEnum(array), index);)
+     if (array == GL_TEXTURE_COORD_ARRAY) {
+diff --git a/src/gl/gl_lookup.c b/src/gl/gl_lookup.c
+index 1c99bae9..e4977e3f 100755
+--- a/src/gl/gl_lookup.c
++++ b/src/gl/gl_lookup.c
+@@ -30,9 +30,6 @@ void gl4es_Stub(void *x, ...) {
+ void gl4es_glEnableClientStatei(GLenum array, GLuint index) {
+     gl4es_glEnableClientStateIndexed(array, index);
+ }
+-void gl4es_glDisableClientStatei(GLenum array, GLuint index) {
+-    gl4es_glDisableClientStateIndexed(array, index);
+-}
+ 
+ void *gl4es_GetProcAddress(const char *name) {
+     DBG(printf("glGetProcAddress(\"%s\")", name);)

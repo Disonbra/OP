@@ -31,7 +31,7 @@ COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
 LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
 BROTLI_VERSION=1.2.0
-FREETYPE2_VERSION=2.13.3
+FREETYPE2_VERSION=2.14.1
 OPENAL_VERSION=1.24.3
 BOOST_VERSION=1.88.0
 LIBICU_VERSION=78.1
@@ -52,7 +52,7 @@ RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
 VSG_VERSION=1.0.9
 VSGXCHANGE_VERSION=1.0.5
 VSGOPENMW_VERSION=0.2
-
+XZ_VERSION=5.8.2
 
 mkdir -p "${SRC_DIR}" "${PREFIX}" "${MARKERS_DIR}"
 cd "${WORK_DIR}"
@@ -156,7 +156,7 @@ build_configure_dual_platform() {
     if skip_if_installed "${name}_sim"; then true; else
         cd "${src_dir}"
         build_configure_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${configure_args[@]}"
-        
+
         mark_as_installed "${name}_sim"
     fi
 }
@@ -185,19 +185,21 @@ build_dual_platform() {
     fi
     
     # Build for simulator
-    if skip_if_installed "${name}_sim"; then true; else
-        echo "=== Building ${name} for simulator ==="
-        cd "${src_dir}"
+    if [[ ! "${name}" =~ (gl4es|osg|openmw) ]]; then
+        if skip_if_installed "${name}_sim"; then true; else
+            echo "=== Building ${name} for simulator ==="
+            cd "${src_dir}"
         
-        # Process arguments for simulator
-        local sim_args=()
-        for arg in "${extra_args[@]}"; do
-            sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
-        done
+            # Process arguments for simulator
+            local sim_args=()
+            for arg in "${extra_args[@]}"; do
+                sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
+            done
         
-        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
+            build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
         
-        mark_as_installed "${name}_sim"
+            mark_as_installed "${name}_sim"
+        fi
     fi
 }
 
@@ -216,15 +218,33 @@ build_platform_lib() {
     
     cmake "${src_dir}" \
         -G Xcode \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
+        -DCMAKE_IGNORE_PATH="/usr;/usr/local;/opt/local;/opt/homebrew" \
+        -DCMAKE_SYSTEM_IGNORE_PATH="/usr;/usr/local" \
         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
         -DPLATFORM="${platform}" \
         -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
         -DCMAKE_INSTALL_PREFIX="${install_prefix}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_FIND_ROOT_PATH="${install_prefix}" \
+        -DDEFAULT_ES=2 -DNOX11=1 -DNOEGL=1 -DSTATICLIB=0 \
         -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-        -DCMAKE_CXX_FLAGS="-I${install_prefix}/include/ ${COMMON_FLAGS}" \
+        -DCMAKE_CXX_FLAGS="-I${install_prefix}/include/ -I${install_prefix}/include/freetype2/ ${COMMON_FLAGS}" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/include/" \
+        -DMyGUI_LIBRARY="${install_prefix}/lib/libMyGUIEngineStatic.a" \
+        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENGL_glx_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENAL_INCLUDE_DIR="${install_prefix}/include/AL/" \
+        -DBullet_INCLUDE_DIR="${install_prefix}/include/bullet/" \
+        -DJPEG_INCLUDE_DIR="${install_prefix}/include/" \
+        -DPNG_INCLUDE_DIR="${install_prefix}/include/" \
+        -DCOLLADA_INCLUDE_DIR="${install_prefix}/include/collada-dom2.5/" \
+        -DCOLLADA_DOM_ROOT="${install_prefix}/include/collada-dom2.5/1.4/dom" \
+        -Wno-dev -Wno-deprecated \
         "${extra_args[@]}"
     
     cmake --build . --config Release -j"${BUILD_JOBS}"
@@ -340,21 +360,6 @@ if skip_if_installed "libpng"; then true; else
         --host=arm-apple-darwin
 fi
 
-# ------------------- brotli -------------------
-#if skip_if_installed "brotli"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "brotli-${BROTLI_VERSION}" ]; then
-#        echo "=== Downloading and building brotli ==="
-#        wget -c "https://github.com/google/brotli/archive/refs/tags/v${BROTLI_VERSION}.tar.gz" -O - | tar -xz
-#    fi
-
-    # For iOS builds, we need to disable shared libraries and build static
-#    build_dual_platform "brotli" "${SRC_DIR}/brotli-${BROTLI_VERSION}" \
-#        -DBUILD_SHARED_LIBS=OFF \
-#        -DBROTLI_DISABLE_TESTS=ON \
-#        -DBROTLI_BUNDLED_MODE=OFF
-#fi
-
 # ------------------- FreeType -------------------
 if skip_if_installed "freetype"; then true; else
     cd "${SRC_DIR}"
@@ -363,11 +368,20 @@ if skip_if_installed "freetype"; then true; else
         wget -c https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE2_VERSION}.tar.xz -O - | tar -xJ
     fi
     
-    build_dual_platform "freetype" "${SRC_DIR}/freetype-${FREETYPE2_VERSION}" \
-        -DCMAKE_FT_DISABLE_BZIP2=ON \
-        -DCMAKE_FT_DISABLE_PNG=ON \
-        -DCMAKE_FT_DISABLE_BROTLI=ON
+    build_dual_platform "freetype" "${SRC_DIR}/freetype-${FREETYPE2_VERSION}"
 fi
+
+# ------------------- GL4ES_114 -------------------
+#if skip_if_installed "gl4es"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "gl4es" ]; then
+#        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
+#        git clone https://github.com/khanhduytran0/gl4es.git gl4es#
+#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_114.patch
+#    fi
+#
+#    build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
+#fi
 
 # ------------------- NG-GL4ES -------------------
 #if skip_if_installed "ng-gl4es"; then true; else
@@ -396,7 +410,6 @@ if skip_if_installed "gl4es"; then true; else
     if [ ! -d "gl4es" ]; then
         echo "=== Downloading and building GL4ES (OpenMW branch) ==="
         git clone https://github.com/ptitSeb/gl4es.git gl4es
-        #sed -i '' 's/#ifdef __GNUC__/#if defined(__GNUC__) \&\& !defined(__APPLE__)/' gl4es/src/gl/attributes.h
         patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
     fi
     
@@ -404,10 +417,7 @@ if skip_if_installed "gl4es"; then true; else
         -DNOEGL=ON \
         -DNOX11=ON \
         -DDEFAULT_ES=2 \
-        -DSTATICLIB=OFF \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-        -Wno-deprecated
+        -DSTATICLIB=OFF
 fi
 
 # ------------------- libxml2 -------------------
@@ -441,10 +451,7 @@ if skip_if_installed "libjpeg-turbo"; then true; else
         -DENABLE_SHARED=ON \
         -DENABLE_STATIC=ON \
         -DWITH_TURBOJPEG=ON \
-        -DWITH_TOOLS=OFF \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-        -Wno-deprecated
+        -DWITH_TOOLS=OFF
 fi
 
 # ------------------- OpenAL-Soft (universal shared dylib) -------------------
@@ -463,10 +470,7 @@ if skip_if_installed "openal"; then true; else
         -DALSOFT_BACKEND_WAVE=OFF \
         -DALSOFT_REQUIRE_COREAUDIO=ON \
         -DENABLE_STRICT_TRY_COMPILE=ON \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-        -Wno-deprecated
+        -DBUILD_SHARED_LIBS=ON
 fi
 
 # ------------------- Boost -------------------
@@ -481,12 +485,52 @@ if skip_if_installed "boost"; then true; else
     fi
 
     build_dual_platform "boost" "${SRC_DIR}/boost-${BOOST_VERSION}" \
-        -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system" \
-        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-        -Wno-deprecated
+        -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system"
 
     xcrun ranlib ${PREFIX}/OS64/lib/libboost_{filesystem,program_options,iostreams}.a
     xcrun ranlib ${PREFIX}/SIMULATORARM64/lib/libboost_{filesystem,program_options,iostreams}.a
+fi
+
+# ------------------- Build libiconv -------------------
+build_iconv() {
+    local iconv_version="1.17"
+    cd "${SRC_DIR}"
+    
+    if [ ! -d "libiconv-${iconv_version}" ]; then
+        wget -c "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${iconv_version}.tar.gz" -O - | tar -xzf -
+    fi
+    
+    # Build for device
+    echo "=== Building libiconv ==="
+        build_configure_dual_platform "iconv" "${SRC_DIR}/libiconv-${iconv_version}" \
+        --disable-nls
+}
+
+# ------------------- liblzma (xz-utils) -------------------
+if skip_if_installed "liblzma"; then true; else
+    cd "${SRC_DIR}"
+    
+    if [ ! -d "xz-${XZ_VERSION}" ]; then
+        echo "=== Downloading and building liblzma ==="
+        wget -c https://github.com/tukaani-project/xz/releases/download/v${XZ_VERSION}/xz-${XZ_VERSION}.tar.gz -O - | tar -xzf -
+    fi
+    
+    # Build for device
+    echo "=== Building liblzma ==="
+        build_configure_dual_platform "liblzma" "${SRC_DIR}/xz-${XZ_VERSION}" \
+        --disable-rpath \
+        --disable-nls \
+        --disable-doc \
+        --disable-scripts \
+        --disable-lzmainfo \
+        --disable-lzmadec \
+        --disable-lzma-links \
+        --disable-xz \
+        --disable-xzdec \
+        --disable-xzdiff \
+        --disable-xzgrep \
+        --disable-xzless \
+        --disable-xzmore SKIP_WERROR_CHECK=yes
 fi
 
 # ------------------- FFmpeg -------------------
@@ -495,6 +539,13 @@ if skip_if_installed "ffmpeg"; then true; else
     if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
         echo "=== Downloading and building ffmpeg ==="
         wget -c https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 -O - | tar -xjf -
+    fi
+    
+    # Build iconv if not already built
+    if skip_if_installed "iconv"; then true; else
+        echo "=== Building libiconv ==="
+        build_iconv
+        mark_as_installed "iconv"
     fi
     
     build_configure_dual_platform "ffmpeg" "${SRC_DIR}/ffmpeg-${FFMPEG_VERSION}" \
@@ -513,7 +564,7 @@ if skip_if_installed "ffmpeg"; then true; else
         --enable-demuxer=bink --enable-demuxer=wav --enable-decoder=pcm_* \
         --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=opus --enable-decoder=vorbis \
         --enable-demuxer=matroska --enable-demuxer=ogg \
-        --disable-asm --disable-optimizations
+        --disable-asm --disable-optimizations --disable-audiotoolbox --disable-iconv --disable-avfilter --disable-avdevice --disable-lzma --disable-videotoolbox
 fi
 
 # ------------------- SDL2 -------------------
@@ -629,11 +680,6 @@ if skip_if_installed "osg"; then true; else
         -DBUILD_OSG_PLUGIN_KTX=ON \
         -DBUILD_OSG_PLUGIN_FREETYPE=ON \
         -DOSG_CPP_EXCEPTIONS_AVAILABLE=TRUE \
-        -DJPEG_INCLUDE_DIR="${PLATFORM_PREFIX}/include/" \
-        -DPNG_INCLUDE_DIR="${PLATFORM_PREFIX}/include/" \
-        -DCOLLADA_INCLUDE_DIR="${PLATFORM_PREFIX}/include/collada-dom2.5/" \
-        -DCOLLADA_DOM_ROOT="${PLATFORM_PREFIX}/include/collada-dom2.5/1.4/dom" \
-        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/include/" \
         -DOSG_GL1_AVAILABLE=ON \
         -DOSG_GL2_AVAILABLE=OFF \
         -DOSG_GL3_AVAILABLE=OFF \
@@ -651,9 +697,7 @@ if skip_if_installed "osg"; then true; else
         -DOSG_FIND_3RD_PARTY_DEPS=OFF \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CXX_STANDARD=11 \
-        -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-        -DCMAKE_CXX_FLAGS="-I${PLATFORM_PREFIX}/include/freetype2 ${COMMON_FLAGS}" \
-        -Wno-dev
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON
 fi
 
 # ------------------- OpenMW -------------------
@@ -662,7 +706,7 @@ if skip_if_installed "openmw"; then true; else
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
         wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/openmw_iOS.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/OpenNW_iOS_2.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \
@@ -682,14 +726,8 @@ if skip_if_installed "openmw"; then true; else
         -DOPENMW_USE_SYSTEM_ICU=ON \
         -DLUA_HAS_CUSTOM_ALLOCATOR=ON \
         -DOSG_STATIC=TRUE \
-        -DOPENGL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/gl4es/include/" \
-        -DMyGUI_LIBRARY="${PLATFORM_PREFIX}/lib/libMyGUIEngineStatic.a" \
-        -DOPENGL_gl_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
-        -DOPENGL_glx_LIBRARY="${PLATFORM_PREFIX}/lib/libGL.dylib" \
-        -DOPENAL_INCLUDE_DIR="${PLATFORM_PREFIX}/include/AL/" \
-        -DBullet_INCLUDE_DIR="${PLATFORM_PREFIX}/include/bullet/" \
-        -DCMAKE_CXX_FLAGS="-std=gnu++20 ${CXXFLAGS}" \
-        -Wno-dev
+        -DCMAKE_CXX_STANDARD=20 \
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON
 fi
 
 echo "=== All done! ==="
