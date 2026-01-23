@@ -184,22 +184,20 @@ build_dual_platform() {
         mark_as_installed "${name}_device"
     fi
     
-    # Build for simulator
-    if [[ ! "${name}" =~ (gl4es|osg|openmw) ]]; then
-        if skip_if_installed "${name}_sim"; then true; else
-            echo "=== Building ${name} for simulator ==="
-            cd "${src_dir}"
+    
+    if skip_if_installed "${name}_sim"; then true; else
+        echo "=== Building ${name} for simulator ==="
+        cd "${src_dir}"
         
-            # Process arguments for simulator
-            local sim_args=()
-            for arg in "${extra_args[@]}"; do
-                sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
-            done
+        # Process arguments for simulator
+        local sim_args=()
+        for arg in "${extra_args[@]}"; do
+            sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
+        done
+       
+        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
         
-            build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
-        
-            mark_as_installed "${name}_sim"
-        fi
+        mark_as_installed "${name}_sim"
     fi
 }
 
@@ -224,6 +222,9 @@ build_platform_lib() {
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
         -DCMAKE_IGNORE_PATH="/usr;/usr/local;/opt/local;/opt/homebrew" \
         -DCMAKE_SYSTEM_IGNORE_PATH="/usr;/usr/local" \
+        -DCMAKE_PREFIX_PATH="${install_prefix}" \
+        -DCMAKE_FIND_ROOT_PATH="${install_prefix}" \
+        -DPKG_CONFIG_USE_CMAKE_PREFIX_PATH=TRUE \
         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
         -DPLATFORM="${platform}" \
         -DDEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
@@ -242,9 +243,11 @@ build_platform_lib() {
         -DBullet_INCLUDE_DIR="${install_prefix}/include/bullet/" \
         -DJPEG_INCLUDE_DIR="${install_prefix}/include/" \
         -DPNG_INCLUDE_DIR="${install_prefix}/include/" \
+        -DPNG_LIBRARY="${install_prefix}/lib/libpng16.a" \
         -DCOLLADA_INCLUDE_DIR="${install_prefix}/include/collada-dom2.5/" \
         -DCOLLADA_DOM_ROOT="${install_prefix}/include/collada-dom2.5/1.4/dom" \
-        -Wno-dev -Wno-deprecated \
+        -Wno-deprecated -Wno-dev \
+        -DIOS_DEPS_PREFIX="${install_prefix}" \
         "${extra_args[@]}"
     
     cmake --build . --config Release -j"${BUILD_JOBS}"
@@ -356,8 +359,7 @@ if skip_if_installed "libpng"; then true; else
     fi
 
     # Build for both platforms using configure
-    build_configure_dual_platform "libpng" "${SRC_DIR}/libpng-${LIBPNG_VERSION}" \
-        --host=arm-apple-darwin
+    build_configure_dual_platform "libpng" "${SRC_DIR}/libpng-${LIBPNG_VERSION}"
 fi
 
 # ------------------- FreeType -------------------
@@ -372,16 +374,16 @@ if skip_if_installed "freetype"; then true; else
 fi
 
 # ------------------- GL4ES_114 -------------------
-#if skip_if_installed "gl4es"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "gl4es" ]; then
-#        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
-#        git clone https://github.com/khanhduytran0/gl4es.git gl4es#
-#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_114.patch
-#    fi
-#
-#    build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
-#fi
+if skip_if_installed "gl4es"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "gl4es" ]; then
+        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
+        git clone https://github.com/khanhduytran0/gl4es.git gl4es
+        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_114.patch
+    fi
+
+    build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
+fi
 
 # ------------------- NG-GL4ES -------------------
 #if skip_if_installed "ng-gl4es"; then true; else
@@ -397,28 +399,38 @@ fi
 #    build_dual_platform "ng-gl4es" "${SRC_DIR}/ng-gl4es" \
 #        -DNOEGL=ON \
 #        -DNOX11=ON \
-#        -DDEFAULT_ES=2 \
-#        -DSTATICLIB=OFF \
-#        -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
-#        -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
-#        -Wno-deprecated
+#        -DSTATICLIB=OFF
 #fi
 
 # ------------------- GL4ES -------------------
-if skip_if_installed "gl4es"; then true; else
-    cd "${SRC_DIR}"
-    if [ ! -d "gl4es" ]; then
-        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
-        git clone https://github.com/ptitSeb/gl4es.git gl4es
-        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
-    fi
+#if skip_if_installed "gl4es"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "gl4es" ]; then
+#        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
+#        git clone https://github.com/ptitSeb/gl4es.git gl4es
+#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
+#    fi
     
-    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
-        -DNOEGL=ON \
-        -DNOX11=ON \
-        -DDEFAULT_ES=2 \
-        -DSTATICLIB=OFF
-fi
+#    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
+#        -DNOEGL=ON \
+#        -DNOX11=ON \
+#        -DDEFAULT_ES=2 \
+#        -DSTATICLIB=OFF
+#fi
+
+# zink, moltenvk
+# Set Python environment variables
+# export PYTHONPATH="/Users/mac/Library/Python/3.9/lib/python/site-packages:$PYTHONPATH"
+# export PATH="/Users/mac/Library/Python/3.9/bin:$PATH"
+
+
+# brew install meson ninja pkg-config bison flex, pip3 install mako
+# pip3 install pyyaml
+# git clone https://github.com/KhronosGroup/MoltenVK.git
+# inside folder, ./fetchDependencies --ios
+# make ios
+
+# git clone https://gitlab.freedesktop.org/mesa/mesa.git
 
 # ------------------- libxml2 -------------------
 if skip_if_installed "libxml2"; then true; else
@@ -634,6 +646,39 @@ if skip_if_installed "lz4"; then true; else
         -DBUILD_SHARED_LIBS=OFF
 fi
 
+# ------------------- Libogg -------------------
+if skip_if_installed "libogg"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "${SRC_DIR}/libogg-1.3.5" ]; then
+        echo "=== Downloading and building libogg ==="
+        wget -c https://github.com/xiph/ogg/releases/download/v1.3.5/libogg-1.3.5.tar.gz -O - | tar -xz
+    fi
+
+    build_dual_platform "libogg" "${SRC_DIR}/libogg-1.3.5"
+fi
+
+# ------------------- Vorbis -------------------
+if skip_if_installed "vorbis"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "${SRC_DIR}/libvorbis-1.3.7" ]; then
+        echo "=== Downloading and building vorbis ==="
+        wget -c https://github.com/xiph/vorbis/releases/download/v1.3.7/libvorbis-1.3.7.tar.gz -O - | tar -xz
+    fi
+
+    build_dual_platform "vorbis" "${SRC_DIR}/libvorbis-1.3.7"
+fi
+
+# ------------------- uqm -------------------
+#if skip_if_installed "uqm"; then true; else
+#    cd "${SRC_DIR}"
+#    if [ ! -d "${SRC_DIR}/UQM-MegaMod" ]; then
+#        echo "=== Downloading and building uqm ==="
+#        git clone --branch ReAndroid --single-branch https://github.com/JHGuitarFreak/UQM-MegaMod.git
+#    fi
+
+#    build_dual_platform "uqm" "${SRC_DIR}/UQM-MegaMod"
+#fi
+
 # ------------------- COLLADA-DOM -------------------
 if skip_if_installed "collada"; then true; else
     cd "${SRC_DIR}"
@@ -706,7 +751,7 @@ if skip_if_installed "openmw"; then true; else
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
         wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/OpenNW_iOS_2.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/OpenMW_iOS_2.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \

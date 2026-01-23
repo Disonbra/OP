@@ -1,0 +1,22 @@
+[binaries]
+c = ['xcrun', '-sdk', 'iphonesimulator', 'clang']
+cpp = ['xcrun', '-sdk', 'iphonesimulator', 'clang++']
+objc = ['xcrun', '-sdk', 'iphonesimulator', 'clang']
+objcpp = ['xcrun', '-sdk', 'iphonesimulator', 'clang++']
+ar = 'ar'
+strip = 'strip'
+pkg-config = 'pkg-config'
+
+[properties]
+sys_root = '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk'
+# Build for both ARM64 and x86_64 simulators
+c_args = ['-arch', 'arm64', '-arch', 'x86_64', '-miphonesimulator-version-min=12.0']
+cpp_args = ['-arch', 'arm64', '-arch', 'x86_64', '-miphonesimulator-version-min=12.0']
+objc_args = ['-arch', 'arm64', '-arch', 'x86_64', '-miphonesimulator-version-min=12.0']
+objcpp_args = ['-arch', 'arm64', '-arch', 'x86_64', '-miphonesimulator-version-min=12.0']
+
+[host_machine]
+system = 'darwin'
+cpu_family = 'x86_64'  # For x86_64 simulator, change to aarch64 for ARM64 simulator
+cpu = 'x86_64'
+endian = 'little'

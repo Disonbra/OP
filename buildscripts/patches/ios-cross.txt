@@ -1,0 +1,16 @@
+meson setup \
+  --cross-file ../ios-cross.txt \
+  -Dplatforms= \
+  -Dgallium-drivers=zink \
+  -Dvulkan-drivers= \
+  -Dglx=disabled \
+  -Degl=disabled \
+  -Dgbm=disabled \  
+  -Dgles2=enabled \
+  -Dgles1=enabled \
+  -Dshared-glapi=enabled \
+  -Dllvm=disabled \
+  -Dshared-llvm=disabled \
+  -Dbuildtype=release \
+  -Dprefix=/Users/mac/Documents/mesa/build-ios
+  ..
