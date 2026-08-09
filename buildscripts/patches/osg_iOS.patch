@@ -13,7 +13,7 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 0a5f61b..a7469cd 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -65,8 +65,8 @@ ELSEIF(APPLE)
+@@ -65,9 +65,10 @@ ELSEIF(APPLE)
      IF(OSG_BUILD_PLATFORM_IPHONE)
  
          # set sdk and min versions
@@ -23,7 +23,10 @@ index 0a5f61b..a7469cd 100644
 +        SET (IPHONE_VERSION_MIN "13" CACHE STRING "IOS minimum os version, use 7.0 or greater to get 64bit support")
  
          # get full path to sdk from requested versions
-         SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
+-        SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
++        EXECUTE_PROCESS(COMMAND xcode-select -p OUTPUT_VARIABLE OSG_XCODE_DEVELOPER_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
++        SET (IPHONE_DEVROOT "${OSG_XCODE_DEVELOPER_DIR}/Platforms/iPhoneOS.platform/Developer")
+         SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneOS${IPHONE_SDKVER}.sdk")
 @@ -235,12 +235,15 @@ IF(NOT ANDROID)
  IF(APPLE)
  
