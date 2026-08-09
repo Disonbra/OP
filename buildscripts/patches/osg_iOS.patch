@@ -183,3 +183,22 @@ index 3c61dae..df2be1f 100644
      }
  
      #elif defined(COMPILE_CARBON_VERSION)
+--- a/src/osg/GLExtensions.cpp
++++ b/src/osg/GLExtensions.cpp
+@@ -378,6 +378,16 @@
+ 
+             // return dlsym( RTLD_DEFAULT, funcName );
+             static void *handle = dlopen((const char *)0L, RTLD_LAZY);
++            // gl4es exports its functions with a gl4es_ prefix on Apple
++            // (Mach-O has no symbol aliasing), so prefer those to keep every
++            // GL call inside the translation layer instead of hitting the
++            // raw GLES driver behind its back.
++            {
++                std::string gl4esName("gl4es_");
++                gl4esName += funcName;
++                if (void* gl4esFunc = dlsym(handle, gl4esName.c_str()))
++                    return gl4esFunc;
++            }
+             return dlsym(handle, funcName);
+         #endif
+ 

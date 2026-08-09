@@ -6,8 +6,7 @@ iosApp/build/
 xcuserdata/
 
 # Embedded engine binaries — regenerated from the ios_build tree:
-#   dylibs:  cp -L ios_build/ios-libs/OS64/lib/<name> iosApp/EmbeddedLibs/
-#   MetalANGLE: cp -RL ios_build/src/gl4es/Frameworks/MetalANGLE.framework iosApp/EmbeddedLibs/
+#   cp -L ios_build/ios-libs/OS64/lib/<name> iosApp/EmbeddedLibs/
 iosApp/EmbeddedLibs/
 
 # macOS

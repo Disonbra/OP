@@ -586,6 +586,7 @@ if skip_if_installed "sdl2"; then true; else
     if [ ! -d "SDL2-${SDL2_VERSION}" ]; then
         echo "=== Downloading and building SDL2 ==="
         wget -c https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz -O - | tar -xz
+        patch -d ${SRC_DIR}/SDL2-${SDL2_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/sdl2_ios_scene.patch
     fi
 
     build_dual_platform "sdl2" "${SRC_DIR}/SDL2-${SDL2_VERSION}" \

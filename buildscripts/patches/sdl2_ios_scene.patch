@@ -1,0 +1,27 @@
+--- a/src/video/uikit/SDL_uikitwindow.m
++++ b/src/video/uikit/SDL_uikitwindow.m
+@@ -208,6 +208,24 @@
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
+         uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++
++        /* Under the UIScene-based app lifecycle (any app with a scene
++         * manifest, including SwiftUI hosts), a window that is not attached
++         * to a scene is never displayed. Attach to the foreground scene. */
++        if (@available(iOS 13.0, tvOS 13.0, *)) {
++            UIWindowScene *windowScene = nil;
++            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
++                if ([scene isKindOfClass:[UIWindowScene class]]) {
++                    windowScene = (UIWindowScene *)scene;
++                    if (scene.activationState == UISceneActivationStateForegroundActive) {
++                        break;
++                    }
++                }
++            }
++            if (windowScene != nil) {
++                uiwindow.windowScene = windowScene;
++            }
++        }
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {
