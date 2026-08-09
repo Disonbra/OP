@@ -96,6 +96,36 @@ enum OpenMWLauncher {
         }
     }
 
+    /// gl4es resolves GLES symbols through this hook. It must be a C function
+    /// pointer, so the driver handle lives in a global rather than a capture.
+    private static var glesDriverHandle: UnsafeMutableRawPointer?
+
+    /// Prepares the gl4es GL translation layer: binds it to Apple's OpenGL ES
+    /// driver (the implementation behind the context SDL creates) and runs its
+    /// one-time initialization so per-context state exists before the engine's
+    /// first GL call. Without this, glGetString crashes on a NULL glstate.
+    private static func initializeGL4ES(frameworksPath: String) throws {
+        guard let gl = dlopen(frameworksPath + "/libGL.dylib", RTLD_NOW) else {
+            throw LaunchError.dlopenFailed(String(cString: dlerror()))
+        }
+
+        glesDriverHandle = dlopen("/System/Library/Frameworks/OpenGLES.framework/OpenGLES", RTLD_NOW)
+
+        typealias SetProcAddressFn = @convention(c) (@convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?) -> Void
+        typealias InitFn = @convention(c) () -> Void
+
+        if let sym = dlsym(gl, "set_getprocaddress") {
+            let setProcAddress = unsafeBitCast(sym, to: SetProcAddressFn.self)
+            setProcAddress { name in
+                guard let name, let handle = OpenMWLauncher.glesDriverHandle else { return nil }
+                return dlsym(handle, name)
+            }
+        }
+        if let sym = dlsym(gl, "initialize_gl4es") {
+            unsafeBitCast(sym, to: InitFn.self)()
+        }
+    }
+
     /// Loads libopenmw.dylib and calls its `main`. This call blocks and takes
     /// over the process (SDL creates its own window on top of the launcher),
     /// so it must run on the main thread and is effectively one-way.
@@ -113,6 +143,9 @@ enum OpenMWLauncher {
         setenv("OSG_LIBRARY_PATH", "", 1)
 
         guard let fwPath = Bundle.main.privateFrameworksPath else { throw LaunchError.dylibMissing }
+
+        try initializeGL4ES(frameworksPath: fwPath)
+
         let dylibPath = fwPath + "/libopenmw.dylib"
         guard FileManager.default.fileExists(atPath: dylibPath) else { throw LaunchError.dylibMissing }
 
