@@ -17,6 +17,7 @@ fi
 
 # ------------------- Configuration -------------------
 WORK_DIR="$(pwd)/ios_build"
+PATCHES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/patches" && pwd)"
 SRC_DIR="${WORK_DIR}/src"
 TOOLCHAIN_DIR="${WORK_DIR}/ios-cmake"
 PREFIX="${WORK_DIR}/ios-libs"
@@ -379,7 +380,7 @@ if skip_if_installed "gl4es"; then true; else
     if [ ! -d "gl4es" ]; then
         echo "=== Downloading and building GL4ES (OpenMW branch) ==="
         git clone https://github.com/khanhduytran0/gl4es.git gl4es
-        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_114.patch
+        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_114.patch
     fi
 
     build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
@@ -408,7 +409,7 @@ fi
 #    if [ ! -d "gl4es" ]; then
 #        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
 #        git clone https://github.com/ptitSeb/gl4es.git gl4es
-#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
+#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_ios.patch
 #    fi
     
 #    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
@@ -492,8 +493,8 @@ if skip_if_installed "boost"; then true; else
         echo "=== Downloading and building boost ==="
         wget -c https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz -O - | tar -xz
         
-        patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ../../patches/system.diff
-        #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ../../patches/regex.diff
+        patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ${PATCHES_DIR}/system.diff
+        #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ${PATCHES_DIR}/regex.diff
     fi
 
     build_dual_platform "boost" "${SRC_DIR}/boost-${BOOST_VERSION}" \
@@ -705,7 +706,7 @@ if skip_if_installed "osg"; then true; else
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
         wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ../../patches/osg_iOS.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/osg_iOS.patch
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
@@ -751,7 +752,7 @@ if skip_if_installed "openmw"; then true; else
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
         wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/OpenMW_iOS_2.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \
