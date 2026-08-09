@@ -42,7 +42,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		04F8805F2F21F85D00241A3F /* SDL.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = SDL.xcodeproj; sourceTree = "<group>"; };
 		AA00000000000000000000A1 /* OpenMWAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenMWAssets; sourceTree = "<group>"; };
 		AA00000000000000000000A2 /* libopenmw.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenmw.dylib; sourceTree = "<group>"; };
 		AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libSDL2-2.0.0.dylib"; sourceTree = "<group>"; };
@@ -54,7 +53,6 @@
 		AA00000000000000000000A9 /* libz.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libz.1.dylib; sourceTree = "<group>"; };
 		AA00000000000000000000AA /* MetalANGLE.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = MetalANGLE.framework; sourceTree = "<group>"; };
 		324D412C77799164947144CE /* Alpha3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Alpha3.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F47A85A73028EFEC00D74B68 /* SDL.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = SDL.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -94,13 +92,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		04F880602F21F85D00241A3F /* Products */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		BBB3205719C98172FD4C4D97 = {
 			isa = PBXGroup;
 			children = (
@@ -126,13 +117,6 @@
 				AA00000000000000000000AA /* MetalANGLE.framework */,
 			);
 			path = EmbeddedLibs;
-			sourceTree = "<group>";
-		};
-		F47A85AF3028EFEC00D74B68 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		FCC5E6C0A5127F22FA39492E /* Products */ = {
@@ -196,16 +180,6 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FCC5E6C0A5127F22FA39492E /* Products */;
 			projectDirPath = "";
-			projectReferences = (
-				{
-					ProductGroup = 04F880602F21F85D00241A3F /* Products */;
-					ProjectRef = 04F8805F2F21F85D00241A3F /* SDL.xcodeproj */;
-				},
-				{
-					ProductGroup = F47A85AF3028EFEC00D74B68 /* Products */;
-					ProjectRef = F47A85A73028EFEC00D74B68 /* SDL.xcodeproj */;
-				},
-			);
 			projectRoot = "";
 			targets = (
 				1D404C34EF8747A2F53B5A22 /* iosApp */,
