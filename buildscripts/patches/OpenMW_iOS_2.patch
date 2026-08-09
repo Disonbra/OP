@@ -1797,3 +1797,22 @@ index 6b4a980..bfffc6a 100644
  #endif
  
  namespace SDLUtil
+diff --git a/components/files/macospath.cpp b/components/files/macospath.cpp
+--- a/components/files/macospath.cpp
++++ b/components/files/macospath.cpp
+@@ -95,10 +95,15 @@
+         return userPath / mName;
+     }
+ 
+     std::filesystem::path MacOsPath::getLocalPath() const
+     {
++        // Allow a host app (e.g. an iOS launcher) to point the engine at its
++        // bundled base config + resources, since the executable-relative
++        // default is meaningless inside an iOS app sandbox.
++        if (const char* localDir = getenv("OPENMW_LOCAL_CONFIG_DIR"))
++            return std::filesystem::path(localDir);
+         return getBinaryPath().parent_path().parent_path() / "Resources";
+     }
+ 
+     std::filesystem::path MacOsPath::getGlobalDataPath() const
+     {
