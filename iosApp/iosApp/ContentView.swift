@@ -1,6 +1,9 @@
 import SwiftUI
 
-struct ContentView: View {
+/// The original SwiftUI launcher, kept as a fallback while the Compose
+/// Multiplatform launcher (ComposeHost.swift) becomes the primary UI.
+/// To use it, swap ContentView for LegacyLauncherView in iOSApp.swift.
+struct LegacyLauncherView: View {
     @State private var gameData: OpenMWLauncher.GameData?
     @State private var launchError: String?
     @State private var isLaunching = false
