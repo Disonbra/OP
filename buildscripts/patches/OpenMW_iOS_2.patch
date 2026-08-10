@@ -1762,28 +1762,6 @@ index 6ac0923..0000000
 -} // namespace Crash
 -
 -#endif
-diff --git a/components/debug/debugging.cpp b/components/debug/debugging.cpp
-index 6a6f044..72594c5 100644
---- a/components/debug/debugging.cpp
-+++ b/components/debug/debugging.cpp
-@@ -16,7 +16,7 @@
- #pragma warning(pop)
- #endif
- 
--#include <components/crashcatcher/crashcatcher.hpp>
-+//#include <components/crashcatcher/crashcatcher.hpp>
- #include <components/files/conversion.hpp>
- #include <components/misc/strings/conversion.hpp>
- #include <components/misc/strings/lower.hpp>
-@@ -466,7 +466,7 @@ namespace Debug
- #else
-                 const std::string crashLogName = Misc::StringUtils::lowerCase(appName) + "-crash.log";
-                 // install the crash handler as soon as possible.
--                crashCatcherInstall(argc, argv, std::filesystem::temp_directory_path() / crashLogName);
-+                //crashCatcherInstall(argc, argv, //std::filesystem::temp_directory_path() / crashLogName);
- #endif
-                 ret = innerApplication(argc, argv);
-             }
 diff --git a/components/sdlutil/sdlcursormanager.cpp b/components/sdlutil/sdlcursormanager.cpp
 index 6b4a980..bfffc6a 100644
 --- a/components/sdlutil/sdlcursormanager.cpp
@@ -1797,3 +1775,213 @@ index 6b4a980..bfffc6a 100644
  #endif
  
  namespace SDLUtil
+diff --git a/components/files/macospath.cpp b/components/files/macospath.cpp
+--- a/components/files/macospath.cpp
++++ b/components/files/macospath.cpp
+@@ -95,10 +95,15 @@
+         return userPath / mName;
+     }
+ 
+     std::filesystem::path MacOsPath::getLocalPath() const
+     {
++        // Allow a host app (e.g. an iOS launcher) to point the engine at its
++        // bundled base config + resources, since the executable-relative
++        // default is meaningless inside an iOS app sandbox.
++        if (const char* localDir = getenv("OPENMW_LOCAL_CONFIG_DIR"))
++            return std::filesystem::path(localDir);
+         return getBinaryPath().parent_path().parent_path() / "Resources";
+     }
+ 
+     std::filesystem::path MacOsPath::getGlobalDataPath() const
+     {
+--- a/components/shader/shadermanager.cpp
++++ b/components/shader/shadermanager.cpp
+@@ -21,6 +21,10 @@
+ #include <components/misc/strings/conversion.hpp>
+ #include <components/settings/settings.hpp>
+ 
++#ifdef __APPLE__
++#include <TargetConditionals.h>
++#endif
++
+ namespace
+ {
+     osg::Shader::Type getShaderType(const std::string& templateName)
+@@ -658,6 +662,58 @@
+             return false;
+         if (!parseDirectives(source, linkedShaderTemplateNames, defines, mGlobalDefines, templateName))
+             return false;
++#if defined(__APPLE__) && TARGET_OS_IPHONE
++        // OpenGL ES cannot link multiple shader objects of the same stage into
++        // one program, so inline the $link'ed library shaders into the main
++        // source instead of attaching them as separate compilation units.
++        std::set<std::string> inlinedTemplates{ templateName };
++        for (size_t i = 0; i < linkedShaderTemplateNames.size(); ++i)
++        {
++            std::string linkedName = linkedShaderTemplateNames[i];
++            if (getRootPrefix(linkedName).empty())
++                linkedName = "compatibility/" + linkedName;
++            if (!inlinedTemplates.insert(linkedName).second)
++                continue;
++
++            TemplateMap::iterator templateIt = mShaderTemplates.find(linkedName);
++            if (templateIt == mShaderTemplates.end())
++            {
++                std::filesystem::path path = mPath / linkedName;
++                std::ifstream stream;
++                stream.open(path);
++                if (stream.fail())
++                {
++                    Log(Debug::Error) << "Failed to open linked shader " << path;
++                    return false;
++                }
++                std::stringstream buffer;
++                buffer << stream.rdbuf();
++                std::string linkedTemplate = buffer.str();
++                int fileNumber = 1;
++                std::set<std::filesystem::path> insertedPaths;
++                if (!addLineDirectivesAfterConditionalBlocks(linkedTemplate)
++                    || !parseIncludes(mPath, linkedTemplate, linkedName, fileNumber, {}, insertedPaths))
++                    return false;
++                templateIt = mShaderTemplates.insert(std::make_pair(linkedName, std::move(linkedTemplate))).first;
++            }
++
++            std::string linkedSource = templateIt->second;
++            std::vector<std::string> nestedLinks;
++            if (!parseDefines(linkedSource, defines, mGlobalDefines, linkedName)
++                || !parseDirectives(linkedSource, nestedLinks, defines, mGlobalDefines, linkedName))
++                return false;
++            for (auto& nested : nestedLinks)
++                linkedShaderTemplateNames.push_back(std::move(nested));
++
++            // The combined source keeps the main shader's #version directive.
++            size_t versionPos = linkedSource.find("#version");
++            if (versionPos != std::string::npos)
++                linkedSource.replace(versionPos, 1, "//");
++            source += "\n";
++            source += linkedSource;
++        }
++        linkedShaderTemplateNames.clear();
++#endif
+         return true;
+     }
+ 
+--- a/components/debug/debugging.cpp
++++ b/components/debug/debugging.cpp
+@@ -16,7 +16,7 @@
+ #pragma warning(pop)
+ #endif
+ 
+-#include <components/crashcatcher/crashcatcher.hpp>
++//#include <components/crashcatcher/crashcatcher.hpp>
+ #include <components/files/conversion.hpp>
+ #include <components/misc/strings/conversion.hpp>
+ #include <components/misc/strings/lower.hpp>
+@@ -466,7 +466,7 @@
+ #else
+                 const std::string crashLogName = Misc::StringUtils::lowerCase(appName) + "-crash.log";
+                 // install the crash handler as soon as possible.
+-                crashCatcherInstall(argc, argv, std::filesystem::temp_directory_path() / crashLogName);
++                //crashCatcherInstall(argc, argv, //std::filesystem::temp_directory_path() / crashLogName);
+ #endif
+                 ret = innerApplication(argc, argv);
+             }
+@@ -475,10 +475,15 @@
+         }
+         catch (const std::exception& e)
+         {
+-#if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
++            // Showing a modal message box on iOS blocks forever (the SDL
++            // window is already gone when we get here), swallowing the fatal
++            // error log below, so it is skipped on Apple platforms.
++#if !defined(__APPLE__)
++#if (defined(__linux) || defined(__unix) || defined(__posix))
+             if (!isatty(fileno(stdin)))
+ #endif
+                 SDL_ShowSimpleMessageBox(0, (std::string(appName) + ": Fatal error").c_str(), e.what(), nullptr);
++#endif
+ 
+             Log(Debug::Error) << "Fatal error: " << e.what();
+ 
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -503,6 +503,12 @@
+     }
+ 
+     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
++#ifdef __APPLE__
++    // On iOS a HiDPI drawable is native-scale (2-3x) while the engine's
++    // viewport math uses window units, leaving the picture in a corner.
++    // Point resolution keeps them equal and is far cheaper for gl4es.
++    flags &= ~SDL_WINDOW_ALLOW_HIGHDPI;
++#endif
+     if (windowMode == Settings::WindowMode::Fullscreen)
+         flags |= SDL_WINDOW_FULLSCREEN;
+     else if (windowMode == Settings::WindowMode::WindowedFullscreen)
+--- a/components/sdlutil/sdlgraphicswindow.cpp
++++ b/components/sdlutil/sdlgraphicswindow.cpp
+@@ -2,6 +2,10 @@
+ 
+ #include <SDL_video.h>
+ 
++#ifdef __APPLE__
++#include <SDL_syswm.h>
++#endif
++
+ #ifdef OPENMW_GL4ES_MANUAL_INIT
+ #include "gl4esinit.h"
+ #endif
+@@ -133,6 +137,22 @@
+ 
+ #ifdef OPENMW_GL4ES_MANUAL_INIT
+         openmw_gl4es_init(mWindow);
++#endif
++
++#ifdef __APPLE__
++        // iOS has no OS-provided default framebuffer: SDL renders through a
++        // framebuffer object backed by the screen layer. Tell OSG about it so
++        // render stages unbinding an FBO return to the screen instead of the
++        // nonexistent framebuffer 0 (which silently swallows every frame).
++        {
++            SDL_SysWMinfo wmInfo;
++            SDL_VERSION(&wmInfo.version);
++            if (SDL_GetWindowWMInfo(mWindow, &wmInfo) && wmInfo.subsystem == SDL_SYSWM_UIKIT
++                && wmInfo.info.uikit.framebuffer != 0)
++            {
++                setDefaultFboId(wmInfo.info.uikit.framebuffer);
++            }
++        }
+ #endif
+ 
+         setSwapInterval(mVSyncMode);
+--- a/apps/openmw/mwrender/pingpongcanvas.cpp
++++ b/apps/openmw/mwrender/pingpongcanvas.cpp
+@@ -192,9 +192,13 @@
+             }
+             else
+             {
+-                ext->glBindFramebuffer(GL_DRAW_FRAMEBUFFER_EXT, 0);
++                // On iOS the screen is itself a framebuffer object; binding 0
++                // discards the output. Return to the context's default FBO.
++                const GLuint defaultFbo
++                    = state.getGraphicsContext() ? state.getGraphicsContext()->getDefaultFboId() : 0;
++                ext->glBindFramebuffer(GL_DRAW_FRAMEBUFFER_EXT, defaultFbo);
+ 
+-                lastApplied = 0;
++                lastApplied = defaultFbo;
+             }
+         };
+ 
+@@ -334,8 +338,10 @@
+ 
+         if (Stereo::getMultiview())
+         {
+-            ext->glBindFramebuffer(GL_DRAW_FRAMEBUFFER_EXT, 0);
+-            lastApplied = 0;
++            const GLuint defaultFbo
++                = state.getGraphicsContext() ? state.getGraphicsContext()->getDefaultFboId() : 0;
++            ext->glBindFramebuffer(GL_DRAW_FRAMEBUFFER_EXT, defaultFbo);
++            lastApplied = defaultFbo;
+ 
+             resolveViewport->apply(state);
+             state.pushStateSet(mMultiviewResolveStateSet);

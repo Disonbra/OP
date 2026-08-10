@@ -6,21 +6,68 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BB00000000000000000000A1 /* OpenMWAssets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* OpenMWAssets */; };
+		BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* libopenmw.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A5 /* libGL.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* libGL.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.62.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXCopyFilesBuildPhase section */
-		0445F2222F21E0AD00ED79EF /* CopyFiles */ = {
+		0445F2222F21E0AD00ED79EF /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
+				BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */,
+				BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */,
+				BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */,
+				BB00000000000000000000A5 /* libGL.dylib in Embed Frameworks */,
+				BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */,
+				BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */,
+				BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */,
+				BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */,
 			);
+			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		CC00000000000000000000B1 /* Select Platform Libraries */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Select Platform Libraries";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The Embed Frameworks phase copies dylibs from EmbeddedLibs/, which\n# this phase populates from the directory matching the build platform\n# (device vs simulator slices are separate Mach-O files).\nif [ \"$PLATFORM_NAME\" = \"iphonesimulator\" ]; then\n    SRC=\"$SRCROOT/EmbeddedLibsSim\"\nelse\n    SRC=\"$SRCROOT/EmbeddedLibsDevice\"\nfi\nmkdir -p \"$SRCROOT/EmbeddedLibs\"\nrsync -a --delete \"$SRC/\" \"$SRCROOT/EmbeddedLibs/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFileReference section */
-		04F8805F2F21F85D00241A3F /* SDL.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = SDL.xcodeproj; sourceTree = "<group>"; };
 		324D412C77799164947144CE /* Alpha3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Alpha3.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000A1 /* OpenMWAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenMWAssets; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* libopenmw.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenmw.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libSDL2-2.0.0.dylib"; sourceTree = "<group>"; };
+		AA00000000000000000000A4 /* libopenal.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenal.1.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A5 /* libGL.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libGL.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libcollada-dom2.5-dp.0.dylib"; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* libbz2.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libbz2.1.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A8 /* libjpeg.62.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libjpeg.62.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A9 /* libz.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libz.1.dylib; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -60,20 +107,30 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		04F880602F21F85D00241A3F /* Products */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		BBB3205719C98172FD4C4D97 = {
 			isa = PBXGroup;
 			children = (
 				8FC68B5AA5E6EFDFA3AAF9BC /* Configuration */,
 				2BD638C62C0AF15D5F295D7E /* iosApp */,
+				AA00000000000000000000A1 /* OpenMWAssets */,
+				CC00000000000000000000A1 /* EmbeddedLibs */,
 				FCC5E6C0A5127F22FA39492E /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		CC00000000000000000000A1 /* EmbeddedLibs */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A2 /* libopenmw.dylib */,
+				AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */,
+				AA00000000000000000000A4 /* libopenal.1.dylib */,
+				AA00000000000000000000A5 /* libGL.dylib */,
+				AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */,
+				AA00000000000000000000A7 /* libbz2.1.dylib */,
+				AA00000000000000000000A8 /* libjpeg.62.dylib */,
+				AA00000000000000000000A9 /* libz.1.dylib */,
+			);
+			path = EmbeddedLibs;
 			sourceTree = "<group>";
 		};
 		FCC5E6C0A5127F22FA39492E /* Products */ = {
@@ -91,11 +148,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B6EC927BBA8356EF3A0E51CF /* Build configuration list for PBXNativeTarget "iosApp" */;
 			buildPhases = (
-				A837E25DFA305C8AA7D2AB67 /* Compile Kotlin Framework */,
+				CC00000000000000000000B1 /* Select Platform Libraries */,
 				B84119DF99FF4BE57B226BFD /* Sources */,
 				B992977C65065B5DD462F933 /* Frameworks */,
 				AB9E65D0120063EB4534DAE3 /* Resources */,
-				0445F2222F21E0AD00ED79EF /* CopyFiles */,
+				0445F2222F21E0AD00ED79EF /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -138,12 +195,6 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FCC5E6C0A5127F22FA39492E /* Products */;
 			projectDirPath = "";
-			projectReferences = (
-				{
-					ProductGroup = 04F880602F21F85D00241A3F /* Products */;
-					ProjectRef = 04F8805F2F21F85D00241A3F /* SDL.xcodeproj */;
-				},
-			);
 			projectRoot = "";
 			targets = (
 				1D404C34EF8747A2F53B5A22 /* iosApp */,
@@ -156,32 +207,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB00000000000000000000A1 /* OpenMWAssets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		A837E25DFA305C8AA7D2AB67 /* Compile Kotlin Framework */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Compile Kotlin Framework";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B84119DF99FF4BE57B226BFD /* Sources */ = {
@@ -249,7 +279,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -269,14 +299,15 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
+				DEVELOPMENT_TEAM = H7T9L7CPK9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -299,14 +330,15 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
+				DEVELOPMENT_TEAM = H7T9L7CPK9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -370,7 +402,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

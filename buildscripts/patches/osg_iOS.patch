@@ -10,10 +10,9 @@ Subject: [PATCH] osg_iOS
  3 files changed, 76 insertions(+), 8 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 0a5f61b..a7469cd 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -65,8 +65,8 @@ ELSEIF(APPLE)
+@@ -65,12 +65,19 @@
      IF(OSG_BUILD_PLATFORM_IPHONE)
  
          # set sdk and min versions
@@ -22,9 +21,23 @@ index 0a5f61b..a7469cd 100644
 +        SET (IPHONE_SDKVER "26.2" CACHE STRING "IOS SDK-Version")
 +        SET (IPHONE_VERSION_MIN "13" CACHE STRING "IOS minimum os version, use 7.0 or greater to get 64bit support")
  
-         # get full path to sdk from requested versions
-         SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
-@@ -235,12 +235,15 @@ IF(NOT ANDROID)
+-        # get full path to sdk from requested versions
+-        SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
+-        SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneOS${IPHONE_SDKVER}.sdk")
++        # get full path to sdk from requested versions; honour the ios-cmake
++        # toolchain's PLATFORM so simulator builds use the simulator SDK
++        EXECUTE_PROCESS(COMMAND xcode-select -p OUTPUT_VARIABLE OSG_XCODE_DEVELOPER_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
++        IF(DEFINED PLATFORM AND PLATFORM MATCHES "SIMULATOR")
++            SET (IPHONE_DEVROOT "${OSG_XCODE_DEVELOPER_DIR}/Platforms/iPhoneSimulator.platform/Developer")
++            SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneSimulator${IPHONE_SDKVER}.sdk")
++        ELSE()
++            SET (IPHONE_DEVROOT "${OSG_XCODE_DEVELOPER_DIR}/Platforms/iPhoneOS.platform/Developer")
++            SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneOS${IPHONE_SDKVER}.sdk")
++        ENDIF()
+ 
+         # optionally enable bitcode for the build
+         SET (IPHONE_ENABLE_BITCODE "NO" CACHE STRING "IOS Enable Bitcode")
+@@ -235,12 +242,15 @@
  IF(APPLE)
  
      IF(OSG_BUILD_PLATFORM_IPHONE)
@@ -41,7 +54,7 @@ index 0a5f61b..a7469cd 100644
  
      ELSE ()
          FIND_LIBRARY(CARBON_LIBRARY Carbon)
-@@ -314,6 +317,7 @@ ENDIF()
+@@ -314,6 +324,7 @@
  INCLUDE_DIRECTORIES(${OpenSceneGraph_SOURCE_DIR}/include/)
  
  INCLUDE_DIRECTORIES(SYSTEM ${OPENGL_INCLUDE_DIR})
@@ -49,7 +62,7 @@ index 0a5f61b..a7469cd 100644
  
  # Common global definitions
  #ADD_DEFINITIONS(-D)
-@@ -597,8 +601,8 @@ ELSEIF(OSG_GLES3_AVAILABLE)
+@@ -597,8 +608,8 @@
      ENDIF()
  ELSE()
      IF (APPLE)
@@ -60,7 +73,7 @@ index 0a5f61b..a7469cd 100644
      ELSE()
          SET(OPENGL_HEADER1 "#include <GL/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
          SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
-@@ -823,6 +827,8 @@ ENDIF(BUILD_OSG_EXAMPLES AND NOT ANDROID)
+@@ -823,6 +834,8 @@
  # The downside to the latter is that it is harder to build those
  # potentially redundant modules.)
  
@@ -180,3 +193,22 @@ index 3c61dae..df2be1f 100644
      }
  
      #elif defined(COMPILE_CARBON_VERSION)
+--- a/src/osg/GLExtensions.cpp
++++ b/src/osg/GLExtensions.cpp
+@@ -378,6 +378,16 @@
+ 
+             // return dlsym( RTLD_DEFAULT, funcName );
+             static void *handle = dlopen((const char *)0L, RTLD_LAZY);
++            // gl4es exports its functions with a gl4es_ prefix on Apple
++            // (Mach-O has no symbol aliasing), so prefer those to keep every
++            // GL call inside the translation layer instead of hitting the
++            // raw GLES driver behind its back.
++            {
++                std::string gl4esName("gl4es_");
++                gl4esName += funcName;
++                if (void* gl4esFunc = dlsym(handle, gl4esName.c_str()))
++                    return gl4esFunc;
++            }
+             return dlsym(handle, funcName);
+         #endif
+ 
