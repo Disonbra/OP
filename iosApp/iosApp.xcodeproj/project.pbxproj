@@ -39,6 +39,24 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		CC00000000000000000000B1 /* Select Platform Libraries */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Select Platform Libraries";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The Embed Frameworks phase copies dylibs from EmbeddedLibs/, which\n# this phase populates from the directory matching the build platform\n# (device vs simulator slices are separate Mach-O files).\nif [ \"$PLATFORM_NAME\" = \"iphonesimulator\" ]; then\n    SRC=\"$SRCROOT/EmbeddedLibsSim\"\nelse\n    SRC=\"$SRCROOT/EmbeddedLibsDevice\"\nfi\nmkdir -p \"$SRCROOT/EmbeddedLibs\"\nrsync -a --delete \"$SRC/\" \"$SRCROOT/EmbeddedLibs/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFileReference section */
 		324D412C77799164947144CE /* Alpha3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Alpha3.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000A1 /* OpenMWAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenMWAssets; sourceTree = "<group>"; };
@@ -130,6 +148,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B6EC927BBA8356EF3A0E51CF /* Build configuration list for PBXNativeTarget "iosApp" */;
 			buildPhases = (
+				CC00000000000000000000B1 /* Select Platform Libraries */,
 				B84119DF99FF4BE57B226BFD /* Sources */,
 				B992977C65065B5DD462F933 /* Frameworks */,
 				AB9E65D0120063EB4534DAE3 /* Resources */,

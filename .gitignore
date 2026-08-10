@@ -6,8 +6,13 @@ iosApp/build/
 xcuserdata/
 
 # Embedded engine binaries — regenerated from the ios_build tree:
-#   cp -L ios_build/ios-libs/OS64/lib/<name> iosApp/EmbeddedLibs/
+#   cp -L ios_build/ios-libs/OS64/lib/<name> iosApp/EmbeddedLibsDevice/
+#   cp -L ios_build/ios-libs/SIMULATORARM64/lib/<name> iosApp/EmbeddedLibsSim/
+# EmbeddedLibs/ itself is synced from one of those by the "Select Platform
+# Libraries" build phase depending on the build destination.
 iosApp/EmbeddedLibs/
+iosApp/EmbeddedLibsDevice/
+iosApp/EmbeddedLibsSim/
 
 # macOS
 .DS_Store

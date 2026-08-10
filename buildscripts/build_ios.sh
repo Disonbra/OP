@@ -116,9 +116,14 @@ build_configure_platform_lib() {
     
     # Run configure
     if [[ "${name}" == *"ffmpeg"* ]]; then
-        # FFmpeg configure with its own flags
+        # FFmpeg configure with its own flags; sysroot and arch flags must
+        # match the platform being built or simulator builds silently get
+        # device objects.
         "${src_dir}/configure" \
             --prefix="${install_prefix}" \
+            --sysroot="${IOS_SDK_PATH}" \
+            --extra-cflags="-arch ${ARCH} ${MIN_VERSION_FLAG} ${COMMON_FLAGS}" \
+            --extra-ldflags="-arch ${ARCH} -isysroot ${IOS_SDK_PATH}" \
             "${configure_args[@]}"
     else
         # Standard configure for other libraries
@@ -566,9 +571,6 @@ if skip_if_installed "ffmpeg"; then true; else
         --enable-cross-compile \
         --target-os=darwin \
         --cc="clang" \
-        --sysroot="$(xcrun --sdk iphoneos --show-sdk-path)" \
-        --extra-cflags="-arch arm64 -miphoneos-version-min=${DEPLOYMENT_TARGET} ${COMMON_FLAGS}" \
-        --extra-ldflags="-arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
         --enable-pic \
         --disable-everything \
         --disable-programs --disable-doc \
