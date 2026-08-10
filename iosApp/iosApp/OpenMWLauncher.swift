@@ -1,5 +1,6 @@
 import Foundation
 import OpenGLES
+import UIKit
 
 /// Bridges the SwiftUI launcher to the OpenMW engine, which is built as
 /// libopenmw.dylib (embedded in the app's Frameworks directory) exporting
@@ -188,6 +189,21 @@ enum OpenMWLauncher {
         else { throw LaunchError.assetsMissing }
 
         try writeUserConfig(for: game)
+
+        // Hide the SwiftUI launcher window so SDL's window is the ONLY
+        // app window in the scene. A second window competes for key-window
+        // status, which breaks the text-input session and keeps the
+        // on-screen keyboard from ever becoming visible. System windows
+        // (UITextEffectsWindow / UIRemoteKeyboardWindow) HOST the on-screen
+        // keyboard and must never be hidden.
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                let cls = NSStringFromClass(type(of: window))
+                if cls.contains("Keyboard") || cls.contains("TextEffects") { continue }
+                window.isHidden = true
+            }
+        }
 
         // The engine resolves its "local" (base) configuration from this
         // directory; see components/files/macospath.cpp.
