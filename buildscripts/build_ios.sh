@@ -17,6 +17,7 @@ fi
 
 # ------------------- Configuration -------------------
 WORK_DIR="$(pwd)/ios_build"
+PATCHES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/patches" && pwd)"
 SRC_DIR="${WORK_DIR}/src"
 TOOLCHAIN_DIR="${WORK_DIR}/ios-cmake"
 PREFIX="${WORK_DIR}/ios-libs"
@@ -115,9 +116,14 @@ build_configure_platform_lib() {
     
     # Run configure
     if [[ "${name}" == *"ffmpeg"* ]]; then
-        # FFmpeg configure with its own flags
+        # FFmpeg configure with its own flags; sysroot and arch flags must
+        # match the platform being built or simulator builds silently get
+        # device objects.
         "${src_dir}/configure" \
             --prefix="${install_prefix}" \
+            --sysroot="${IOS_SDK_PATH}" \
+            --extra-cflags="-arch ${ARCH} ${MIN_VERSION_FLAG} ${COMMON_FLAGS}" \
+            --extra-ldflags="-arch ${ARCH} -isysroot ${IOS_SDK_PATH}" \
             "${configure_args[@]}"
     else
         # Standard configure for other libraries
@@ -379,7 +385,7 @@ if skip_if_installed "gl4es"; then true; else
     if [ ! -d "gl4es" ]; then
         echo "=== Downloading and building GL4ES (OpenMW branch) ==="
         git clone https://github.com/khanhduytran0/gl4es.git gl4es
-        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_114.patch
+        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_114.patch
     fi
 
     build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
@@ -408,7 +414,7 @@ fi
 #    if [ ! -d "gl4es" ]; then
 #        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
 #        git clone https://github.com/ptitSeb/gl4es.git gl4es
-#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ../../patches/gl4es_ios.patch
+#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_ios.patch
 #    fi
     
 #    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
@@ -492,8 +498,8 @@ if skip_if_installed "boost"; then true; else
         echo "=== Downloading and building boost ==="
         wget -c https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz -O - | tar -xz
         
-        patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ../../patches/system.diff
-        #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ../../patches/regex.diff
+        patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ${PATCHES_DIR}/system.diff
+        #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ${PATCHES_DIR}/regex.diff
     fi
 
     build_dual_platform "boost" "${SRC_DIR}/boost-${BOOST_VERSION}" \
@@ -565,9 +571,6 @@ if skip_if_installed "ffmpeg"; then true; else
         --enable-cross-compile \
         --target-os=darwin \
         --cc="clang" \
-        --sysroot="$(xcrun --sdk iphoneos --show-sdk-path)" \
-        --extra-cflags="-arch arm64 -miphoneos-version-min=${DEPLOYMENT_TARGET} ${COMMON_FLAGS}" \
-        --extra-ldflags="-arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" \
         --enable-pic \
         --disable-everything \
         --disable-programs --disable-doc \
@@ -585,6 +588,7 @@ if skip_if_installed "sdl2"; then true; else
     if [ ! -d "SDL2-${SDL2_VERSION}" ]; then
         echo "=== Downloading and building SDL2 ==="
         wget -c https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz -O - | tar -xz
+        patch -d ${SRC_DIR}/SDL2-${SDL2_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/sdl2_ios_scene.patch
     fi
 
     build_dual_platform "sdl2" "${SRC_DIR}/SDL2-${SDL2_VERSION}" \
@@ -705,7 +709,7 @@ if skip_if_installed "osg"; then true; else
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
         wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ../../patches/osg_iOS.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/osg_iOS.patch
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
@@ -751,7 +755,7 @@ if skip_if_installed "openmw"; then true; else
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
         wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ../../patches/OpenMW_iOS_2.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \

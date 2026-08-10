@@ -29,21 +29,14 @@
 	<key>MinimumOSVersion</key>
 	<string>13.0</string>
 	
-	<!-- REQUIRED: Main Storyboard or Launch Screen -->
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	
 	<!-- REQUIRED: App supports multiple orientations -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>

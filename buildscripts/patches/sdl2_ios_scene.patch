@@ -1,0 +1,259 @@
+--- a/src/video/uikit/SDL_uikitwindow.m	2026-08-09 22:11:35
++++ b/src/video/uikit/SDL_uikitwindow.m	2026-08-09 22:11:35
+@@ -208,6 +208,24 @@
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
+         uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++
++        /* Under the UIScene-based app lifecycle (any app with a scene
++         * manifest, including SwiftUI hosts), a window that is not attached
++         * to a scene is never displayed. Attach to the foreground scene. */
++        if (@available(iOS 13.0, tvOS 13.0, *)) {
++            UIWindowScene *windowScene = nil;
++            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
++                if ([scene isKindOfClass:[UIWindowScene class]]) {
++                    windowScene = (UIWindowScene *)scene;
++                    if (scene.activationState == UISceneActivationStateForegroundActive) {
++                        break;
++                    }
++                }
++            }
++            if (windowScene != nil) {
++                uiwindow.windowScene = windowScene;
++            }
++        }
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {
+--- a/src/video/uikit/SDL_uikitopenglview.m	2026-08-09 20:22:25
++++ b/src/video/uikit/SDL_uikitopenglview.m	2026-08-09 20:22:30
+@@ -308,9 +308,11 @@
+         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, msaaFramebuffer);
+     }
+ 
+-    /* viewRenderbuffer should always be bound here. Code that binds something
+-     * else is responsible for rebinding viewRenderbuffer, to reduce duplicate
+-     * state changes. */
++    /* presentRenderbuffer presents whatever renderbuffer is currently bound.
++     * The app (OpenMW/OSG/gl4es) creates framebuffers with renderbuffer
++     * attachments mid-game and leaves them bound, so always rebind the view
++     * renderbuffer before presenting or the screen freezes on stale content. */
++    glBindRenderbuffer(GL_RENDERBUFFER, viewRenderbuffer);
+     [context presentRenderbuffer:GL_RENDERBUFFER];
+ }
+ 
+--- a/src/video/uikit/SDL_uikitviewcontroller.m	2026-08-09 20:28:23
++++ b/src/video/uikit/SDL_uikitviewcontroller.m	2026-08-09 22:11:35
+@@ -89,6 +89,15 @@
+     BOOL rotatingOrientation;
+     NSString *committedText;
+     NSString *obligateForBackspace;
++
++    /* Custom overlay keyboard: iOS 26 dismisses the system keyboard
++     * immediately for this app (the text input session never becomes
++     * valid), so we draw our own keys and inject SDL events directly. */
++    UIView *kbOverlay;
++    NSMutableArray<UIButton *> *kbLetterKeys;
++    BOOL kbShifted;
++    UILabel *kbPreview;
++    NSMutableString *kbTyped;
+ #endif
+ }
+ 
+@@ -404,8 +413,154 @@
+                     object:nil];
+ #endif
+     [center removeObserver:self name:UITextFieldTextDidChangeNotification object:nil];
++}
++
++/* --- Custom overlay keyboard ------------------------------------------- */
++
++- (UIButton *)kbMakeKey:(NSString *)title action:(SEL)action
++{
++    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
++    [b setTitle:title forState:UIControlStateNormal];
++    [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
++    b.titleLabel.font = [UIFont systemFontOfSize:20];
++    b.backgroundColor = [UIColor colorWithWhite:0.30 alpha:1.0];
++    b.layer.cornerRadius = 6;
++    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
++    [kbOverlay addSubview:b];
++    return b;
++}
++
++- (void)kbBuildOverlay
++{
++    if (kbOverlay) {
++        return;
++    }
++
++    CGFloat viewW = self.view.bounds.size.width;
++    CGFloat viewH = self.view.bounds.size.height;
++    CGFloat overlayW = MIN(viewW, 700);
++    const CGFloat rowH = 40, gap = 5, pad = 8;
++    NSArray<NSString *> *rows = @[ @"1234567890", @"qwertyuiop", @"asdfghjkl'-", @"zxcvbnm" ];
++    const CGFloat previewH = 30;
++    CGFloat overlayH = pad * 2 + previewH + gap + 5 * rowH + 4 * gap;
++
++    kbOverlay = [[UIView alloc] initWithFrame:CGRectMake((viewW - overlayW) / 2,
++                                                         viewH - overlayH,
++                                                         overlayW, overlayH)];
++    kbOverlay.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.93];
++    kbOverlay.layer.cornerRadius = 10;
++    kbLetterKeys = [NSMutableArray array];
++    kbShifted = NO;
++    kbTyped = [NSMutableString string];
++
++    /* Live preview of what has been typed, since the game's own text
++     * field may be covered by this overlay. */
++    kbPreview = [[UILabel alloc] initWithFrame:CGRectMake(pad, pad, overlayW - 2 * pad, previewH)];
++    kbPreview.backgroundColor = [UIColor colorWithWhite:0.22 alpha:1.0];
++    kbPreview.textColor = [UIColor whiteColor];
++    kbPreview.font = [UIFont systemFontOfSize:18];
++    kbPreview.textAlignment = NSTextAlignmentCenter;
++    kbPreview.layer.cornerRadius = 6;
++    kbPreview.clipsToBounds = YES;
++    [kbOverlay addSubview:kbPreview];
++
++    CGFloat y = pad + previewH + gap;
++    for (NSString *row in rows) {
++        NSUInteger n = row.length;
++        BOOL isLast = (row == rows.lastObject);
++        CGFloat sideW = isLast ? (rowH * 1.6 + gap) : 0; /* room for shift/backspace */
++        CGFloat keyW = (overlayW - 2 * pad - 2 * sideW - (n - 1) * gap) / n;
++        CGFloat x = pad + sideW;
++        if (isLast) {
++            UIButton *shift = [self kbMakeKey:@"⇧" action:@selector(kbShiftTapped)];
++            shift.frame = CGRectMake(pad, y, rowH * 1.6, rowH);
++        }
++        for (NSUInteger i = 0; i < n; i++) {
++            NSString *ch = [row substringWithRange:NSMakeRange(i, 1)];
++            UIButton *key = [self kbMakeKey:ch action:@selector(kbKeyTapped:)];
++            key.frame = CGRectMake(x, y, keyW, rowH);
++            if ([ch rangeOfCharacterFromSet:[NSCharacterSet letterCharacterSet]].location != NSNotFound) {
++                [kbLetterKeys addObject:key];
++            }
++            x += keyW + gap;
++        }
++        if (isLast) {
++            UIButton *back = [self kbMakeKey:@"⌫" action:@selector(kbBackspaceTapped)];
++            back.frame = CGRectMake(overlayW - pad - rowH * 1.6, y, rowH * 1.6, rowH);
++        }
++        y += rowH + gap;
++    }
++
++    /* Bottom row: space, return, dismiss. */
++    CGFloat spaceW = overlayW * 0.5;
++    UIButton *space = [self kbMakeKey:@"space" action:@selector(kbSpaceTapped)];
++    space.frame = CGRectMake(pad, y, spaceW, rowH);
++    CGFloat x = pad + spaceW + gap;
++    CGFloat restW = (overlayW - pad - x - gap) / 2;
++    UIButton *ret = [self kbMakeKey:@"return" action:@selector(kbReturnTapped)];
++    ret.frame = CGRectMake(x, y, restW, rowH);
++    UIButton *dismiss = [self kbMakeKey:@"▼" action:@selector(kbDismissTapped)];
++    dismiss.frame = CGRectMake(x + restW + gap, y, restW, rowH);
++
++    [self.view addSubview:kbOverlay];
+ }
+ 
++- (void)kbApplyShift
++{
++    for (UIButton *key in kbLetterKeys) {
++        NSString *t = [key titleForState:UIControlStateNormal];
++        [key setTitle:(kbShifted ? t.uppercaseString : t.lowercaseString)
++             forState:UIControlStateNormal];
++    }
++}
++
++- (void)kbKeyTapped:(UIButton *)key
++{
++    NSString *ch = [key titleForState:UIControlStateNormal];
++    SDL_SendKeyboardText([ch UTF8String]);
++    [kbTyped appendString:ch];
++    kbPreview.text = kbTyped;
++    if (kbShifted) {
++        kbShifted = NO;
++        [self kbApplyShift];
++    }
++}
++
++- (void)kbShiftTapped
++{
++    kbShifted = !kbShifted;
++    [self kbApplyShift];
++}
++
++- (void)kbBackspaceTapped
++{
++    SDL_SendVirtualKeyboardKey(SDL_PRESSED, SDL_SCANCODE_BACKSPACE);
++    SDL_SendVirtualKeyboardKey(SDL_RELEASED, SDL_SCANCODE_BACKSPACE);
++    if (kbTyped.length > 0) {
++        [kbTyped deleteCharactersInRange:NSMakeRange(kbTyped.length - 1, 1)];
++        kbPreview.text = kbTyped;
++    }
++}
++
++- (void)kbSpaceTapped
++{
++    SDL_SendKeyboardText(" ");
++    [kbTyped appendString:@" "];
++    kbPreview.text = kbTyped;
++}
++
++- (void)kbReturnTapped
++{
++    SDL_SendVirtualKeyboardKey(SDL_PRESSED, SDL_SCANCODE_RETURN);
++    SDL_SendVirtualKeyboardKey(SDL_RELEASED, SDL_SCANCODE_RETURN);
++}
++
++- (void)kbDismissTapped
++{
++    SDL_StopTextInput();
++    kbOverlay.hidden = YES;
++}
++
+ /* reveal onscreen virtual keyboard */
+ - (void)showKeyboard
+ {
+@@ -414,10 +569,11 @@
+     }
+ 
+     keyboardVisible = YES;
+-    if (textField.window) {
+-        showingKeyboard = YES;
+-        [textField becomeFirstResponder];
+-    }
++    [self kbBuildOverlay];
++    [kbTyped setString:@""];
++    kbPreview.text = @"";
++    kbOverlay.hidden = NO;
++    [self.view bringSubviewToFront:kbOverlay];
+ }
+ 
+ /* hide onscreen virtual keyboard */
+@@ -428,10 +584,7 @@
+     }
+ 
+     keyboardVisible = NO;
+-    if (textField.window) {
+-        hidingKeyboard = YES;
+-        [textField resignFirstResponder];
+-    }
++    kbOverlay.hidden = YES;
+ }
+ 
+ - (void)keyboardWillShow:(NSNotification *)notification
+@@ -551,7 +704,12 @@
+     frame.origin.x += offset.x;
+     frame.origin.y += offset.y;
+ 
+-    self.view.frame = frame;
++    /* Only touch the frame when it actually needs to change: reassigning the
++     * view frame while the keyboard is presenting can invalidate the text
++     * input session on modern iOS. */
++    if (!CGRectEqualToRect(self.view.frame, frame)) {
++        self.view.frame = frame;
++    }
+ }
+ 
+ - (void)setKeyboardHeight:(int)height
