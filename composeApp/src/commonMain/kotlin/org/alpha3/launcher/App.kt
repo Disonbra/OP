@@ -29,6 +29,7 @@ import kotlinx.coroutines.InternalCoroutinesApi
 import org.alpha3.launcher.files.FileBrowser
 import org.alpha3.launcher.files.createTestFiles
 import org.alpha3.launcher.files.listFilesInDirectory
+import org.alpha3.launcher.globals.PlayBridge
 import org.alpha3.launcher.mods.ModValuesList
 import org.alpha3.launcher.mods.readModValues
 import org.alpha3.launcher.paths.OpenMWPaths
@@ -56,6 +57,13 @@ fun App() {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
 
+                // Present when the platform host wired up an engine-start
+                // action (iOS passes one into MainViewController).
+                PlayBridge.onPlay?.let { play ->
+                    Button(onClick = play) {
+                        Text("Play")
+                    }
+                }
                 Button(onClick = { showContent = !showContent }) {
                     Text("Settings")
                 }

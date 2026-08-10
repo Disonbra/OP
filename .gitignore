@@ -14,5 +14,11 @@ iosApp/EmbeddedLibs/
 iosApp/EmbeddedLibsDevice/
 iosApp/EmbeddedLibsSim/
 
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+composeApp/build/
+
 # macOS
 .DS_Store
