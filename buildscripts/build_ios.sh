@@ -259,20 +259,20 @@ build_platform_lib() {
     cmake --build . --config Release -j"${BUILD_JOBS}"
     cmake --install . --config Release
     
-    # Special handling for gl4es - copy headers to main include directory
+    # gl4es upstream has no CMake install rules: stage the dylib and the
+    # headers into the prefix ourselves. The dylib output path is shared
+    # between the device and simulator builds, so this must run right
+    # after each platform's build (or the second build overwrites the
+    # first's dylib).
     if [[ "${name}" == *"gl4es"* ]]; then
-        echo "=== Copying gl4es headers to main include directory ==="
-        
-        # Copy all files and folders from gl4es/include/ to include/
-        if [ -d "${install_prefix}/include/gl4es/include" ]; then
-            echo "Copying from ${install_prefix}/include/gl4es/include to ${install_prefix}/include/"
-            cp -r "${install_prefix}/include/gl4es/include/"* "${install_prefix}/include/" 2>/dev/null || true
-            
-            # Also check for any headers directly in gl4es directory
-            if [ -d "${install_prefix}/include/gl4es" ]; then
-                find "${install_prefix}/include/gl4es" -name "*.h" -exec cp {} "${install_prefix}/include/" \; 2>/dev/null || true
-            fi
-        fi
+        echo "=== Installing gl4es into ${install_prefix} ==="
+        mkdir -p "${install_prefix}/lib" "${install_prefix}/include/gl4es"
+        cp "${src_dir}/lib/Release/libGL.dylib" "${install_prefix}/lib/libGL.dylib"
+        # Both header layouts are consumed: OSG/OpenMW are pointed at
+        # include/gl4es/include/ via OPENGL_INCLUDE_DIR, and other code
+        # includes <GL/gl.h> from the flat include dir.
+        cp -r "${src_dir}/include" "${install_prefix}/include/gl4es/"
+        cp -r "${src_dir}/include/"* "${install_prefix}/include/"
     fi
     
     cd ..
@@ -385,6 +385,9 @@ if skip_if_installed "gl4es"; then true; else
     if [ ! -d "gl4es" ]; then
         echo "=== Downloading and building GL4ES (OpenMW branch) ==="
         git clone https://github.com/khanhduytran0/gl4es.git gl4es
+        # Pin to the commit gl4es_114.patch was written against; upstream
+        # master can drift and break the patch.
+        git -C ${SRC_DIR}/gl4es checkout e095812c2ff29971ca76c481035934fbac976ce0
         patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_114.patch
     fi
 
