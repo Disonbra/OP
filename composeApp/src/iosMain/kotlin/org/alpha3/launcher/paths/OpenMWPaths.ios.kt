@@ -33,6 +33,13 @@ private fun cachesDir(): String =
         true
     ).first() as String
 
+private fun libraryDir(): String =
+    NSSearchPathForDirectoriesInDomains(
+        NSLibraryDirectory,
+        NSUserDomainMask,
+        true
+    ).first() as String
+
 private fun ensureDir(path: String) {
     val fileManager = NSFileManager.defaultManager
     memScoped {
@@ -61,7 +68,7 @@ actual object OpenMWPaths {
         get() = documentsDir() // or same as USER_FILE_STORAGE if you prefer
 
     actual val USER_CONFIG: String by lazy {
-        val p = "$USER_FILE_STORAGE/config"
+        val p = "${libraryDir()}/Preferences/openmw"
         ensureDir(p)
         p
     }

@@ -94,3 +94,38 @@ dependencies {
     debugImplementation(compose.uiTooling)
 }
 
+tasks.register("printIosSimulatorPath") {
+    group = "help"
+    description = "Prints the path to the app's data container on the iOS Simulator"
+    doLast {
+        val bundleId = "org.alpha3.launcher.Alpha3"
+        val cmd = "xcrun simctl list devices | grep '(Booted)' | head -1 | grep -oE '[0-9A-F-]{36}'"
+        val deviceId = try {
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
+            process.inputStream.bufferedReader().readText().trim()
+        } catch (e: Exception) { "" }
+
+        if (deviceId.isNotEmpty()) {
+            val pathCmd = "xcrun simctl get_app_container $deviceId $bundleId data"
+            val path = try {
+                val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", pathCmd))
+                process.inputStream.bufferedReader().readText().trim()
+            } catch (e: Exception) { "" }
+            
+            if (path.isNotEmpty()) {
+                println("\n=========================================================================")
+                println("IOS SIMULATOR APP DATA PATH:")
+                println("Documents: $path/Documents")
+                println("Config: $path/Library/Preferences/openmw")
+                println("To open in Finder run:")
+                println("open $path/Documents")
+                println("=========================================================================\n")
+            } else {
+                println("App container not found for $bundleId on device $deviceId. Is the app installed?")
+            }
+        } else {
+            println("No booted iOS Simulator found.")
+        }
+    }
+}
+

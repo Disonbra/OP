@@ -114,6 +114,11 @@ enum OpenMWLauncher {
         let settingsURL = userConfigURL.appendingPathComponent("settings.cfg")
         if !fm.fileExists(atPath: settingsURL.path) {
             let settings = """
+            [Video]
+            resolution x = 1280
+            resolution y = 720
+            [GUI]
+            scaling factor = 0.7
             [Post Processing]
             enabled = false
             """
@@ -189,21 +194,6 @@ enum OpenMWLauncher {
         else { throw LaunchError.assetsMissing }
 
         try writeUserConfig(for: game)
-
-        // Hide the SwiftUI launcher window so SDL's window is the ONLY
-        // app window in the scene. A second window competes for key-window
-        // status, which breaks the text-input session and keeps the
-        // on-screen keyboard from ever becoming visible. System windows
-        // (UITextEffectsWindow / UIRemoteKeyboardWindow) HOST the on-screen
-        // keyboard and must never be hidden.
-        for scene in UIApplication.shared.connectedScenes {
-            guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows {
-                let cls = NSStringFromClass(type(of: window))
-                if cls.contains("Keyboard") || cls.contains("TextEffects") { continue }
-                window.isHidden = true
-            }
-        }
 
         // The engine resolves its "local" (base) configuration from this
         // directory; see components/files/macospath.cpp.
