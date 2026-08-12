@@ -7,29 +7,15 @@ import ComposeApp
 class PassThroughWindow: UIWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hitView = super.hitTest(point, with: event)
-        
-        // If we hit the window background or the root controller's view, we might want to pass through.
+        if rootViewController?.presentedViewController != nil { return hitView }
         if hitView == self || hitView == rootViewController?.view {
-            
-            // Check for Custom Config Panel (tag 999)
-            if let root = rootViewController, let _ = root.view.viewWithTag(999) {
-                return hitView // Catch the touch for the panel
+            if let root = rootViewController {
+                if let _ = root.view.viewWithTag(999) { return hitView }
+                if let _ = root.view.viewWithTag(888) { return hitView }
             }
-            
-            // Check for Delete Confirmation Panel (tag 888)
-            if let root = rootViewController, let _ = root.view.viewWithTag(888) {
-                return hitView // Catch the touch for the confirmation box
-            }
-            
-            // Check for System Alerts
-            if let root = rootViewController, root.presentedViewController != nil {
-                return hitView // Catch for Alerts
-            }
-            
-            return nil // Pass through to Morrowind
+            return nil
         }
-        
-        return hitView // Normal interaction for buttons and sticks
+        return hitView
     }
 }
 
@@ -185,7 +171,7 @@ class GameplayOverlayController: UIViewController {
     private var layoutDone = false
 
     let availableButtons: [(name: String, code: Int32)] = [
-        ("ESC", 41), ("ENT", 40), ("TAB", 43), ("SPC", 44),
+        ("LCLICK", 1), ("RCLICK", 3), ("ESC", 41), ("ENT", 40), ("TAB", 43), ("SPC", 44),
         ("JUMP", 8), ("JOURN", 13), ("WAIT", 23), ("MAP", 16),
         ("WEAP", 9), ("MAG", 21), ("RUN", 225), ("SNK", 224),
         ("QSAVE", 62), ("QLOAD", 66), ("INV", 12),
@@ -197,7 +183,6 @@ class GameplayOverlayController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-        
         thumbstick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
         view.addSubview(thumbstick)
         
@@ -245,6 +230,8 @@ class GameplayOverlayController: UIViewController {
                 thumbstick.center = CGPoint(x: 80, y: screen.height - 80)
             }
             if customButtons.isEmpty && UserDefaults.standard.array(forKey: "CustomButtonsList_v7") == nil {
+                createAndAddButton(name: "LCLICK", scancode: 1, at: CGPoint(x: screen.width - 150, y: screen.height - 130))
+                createAndAddButton(name: "RCLICK", scancode: 3, at: CGPoint(x: screen.width - 70, y: screen.height - 130))
                 createAndAddButton(name: "ESC", scancode: 41, at: CGPoint(x: screen.width - 120, y: screen.height - 60))
                 createAndAddButton(name: "ENT", scancode: 40, at: CGPoint(x: screen.width - 50, y: screen.height - 60))
             }
@@ -253,55 +240,35 @@ class GameplayOverlayController: UIViewController {
     
     @objc func showAddButtonPanel() {
         if view.viewWithTag(999) != nil { return }
-        
         let panelW: CGFloat = 400
         let panelH: CGFloat = 250
         let panel = UIView(frame: CGRect(x: 0, y: 0, width: panelW, height: panelH))
         panel.center = view.center
         panel.backgroundColor = UIColor(white: 0.1, alpha: 0.98)
-        panel.layer.cornerRadius = 16
-        panel.layer.borderWidth = 1
-        panel.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor
-        panel.tag = 999
-        
+        panel.layer.cornerRadius = 16; panel.layer.borderWidth = 1; panel.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor; panel.tag = 999
         let titleLabel = UILabel(frame: CGRect(x: 0, y: 12, width: panelW, height: 24))
         titleLabel.text = "Tap to Add Button"; titleLabel.textAlignment = .center; titleLabel.textColor = .white; titleLabel.font = .boldSystemFont(ofSize: 18)
         panel.addSubview(titleLabel)
-        
         let scroll = UIScrollView(frame: CGRect(x: 15, y: 45, width: panelW - 30, height: panelH - 100))
         panel.addSubview(scroll)
-        
-        let btnW: CGFloat = 85
-        let btnH: CGFloat = 40
-        let gap: CGFloat = 8
-        let cols = 4
-        
+        let btnW: CGFloat = 85; let btnH: CGFloat = 40; let gap: CGFloat = 8; let cols = 4
         for (i, data) in availableButtons.enumerated() {
-            let row = i / cols
-            let col = i % cols
+            let row = i / cols; let col = i % cols
             let b = UIButton(type: .system)
             b.frame = CGRect(x: CGFloat(col) * (btnW + gap), y: CGFloat(row) * (btnH + gap), width: btnW, height: btnH)
-            b.setTitle(data.name, for: .normal)
-            b.setTitleColor(.white, for: .normal)
-            b.backgroundColor = UIColor.white.withAlphaComponent(0.1)
-            b.layer.cornerRadius = 8
-            b.tag = Int(data.code)
+            b.setTitle(data.name, for: .normal); b.setTitleColor(.white, for: .normal); b.backgroundColor = UIColor.white.withAlphaComponent(0.1); b.layer.cornerRadius = 8; b.tag = Int(data.code)
             b.addTarget(self, action: #selector(buttonSelectedFromGrid(_:)), for: .touchUpInside)
-            scroll.addSubview(b)
-            scroll.contentSize = CGSize(width: scroll.frame.width, height: b.frame.maxY + gap)
+            scroll.addSubview(b); scroll.contentSize = CGSize(width: scroll.frame.width, height: b.frame.maxY + gap)
         }
-        
         let cancelBtn = UIButton(type: .system); cancelBtn.frame = CGRect(x: panelW/2 - 50, y: panelH - 45, width: 100, height: 35); cancelBtn.setTitle("Cancel", for: .normal); cancelBtn.setTitleColor(.white, for: .normal); cancelBtn.backgroundColor = .systemRed.withAlphaComponent(0.6); cancelBtn.layer.cornerRadius = 8
         cancelBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside); panel.addSubview(cancelBtn)
-        
         view.addSubview(panel)
     }
     
     @objc func buttonSelectedFromGrid(_ sender: UIButton) {
         guard let name = sender.title(for: .normal) else { return }
         createAndAddButton(name: name, scancode: Int32(sender.tag), at: view.center)
-        saveAllCustomButtons()
-        hideConfigPanels()
+        saveAllCustomButtons(); hideConfigPanels()
     }
     
     @objc func hideConfigPanels() {
@@ -314,25 +281,28 @@ class GameplayOverlayController: UIViewController {
         btn.frame = CGRect(x: 0, y: 0, width: 70, height: 50); btn.center = position; btn.setTitle(name, for: .normal); btn.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold); btn.setTitleColor(.white, for: .normal); btn.backgroundColor = UIColor.black.withAlphaComponent(0.5); btn.layer.cornerRadius = 10; btn.tag = Int(scancode)
         btn.addTarget(self, action: #selector(customButtonDown(_:)), for: .touchDown)
         btn.addTarget(self, action: #selector(customButtonUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleButtonPan(_:)))
-        pan.isEnabled = isEditMode
-        btn.addGestureRecognizer(pan)
-        
-        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleButtonLongPress(_:)))
-        longPress.isEnabled = isEditMode
-        btn.addGestureRecognizer(longPress)
-        
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleButtonPan(_:))); pan.isEnabled = isEditMode; btn.addGestureRecognizer(pan)
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleButtonLongPress(_:))); longPress.isEnabled = isEditMode; btn.addGestureRecognizer(longPress)
         view.addSubview(btn); customButtons.append(btn)
     }
 
     @objc func customButtonDown(_ sender: UIButton) {
         if isEditMode { return }
-        sendNativeKey(scancode: Int32(sender.tag), state: 1)
+        let name = sender.title(for: .normal) ?? ""
+        if name == "LCLICK" || name == "RCLICK" {
+            sendNativeMouseButton(button: UInt8(sender.tag), state: 1)
+        } else {
+            sendNativeKey(scancode: Int32(sender.tag), state: 1)
+        }
     }
     @objc func customButtonUp(_ sender: UIButton) {
         if isEditMode { return }
-        sendNativeKey(scancode: Int32(sender.tag), state: 0)
+        let name = sender.title(for: .normal) ?? ""
+        if name == "LCLICK" || name == "RCLICK" {
+            sendNativeMouseButton(button: UInt8(sender.tag), state: 0)
+        } else {
+            sendNativeKey(scancode: Int32(sender.tag), state: 0)
+        }
     }
     
     @objc func handleButtonPan(_ gesture: UIPanGestureRecognizer) {
@@ -347,38 +317,21 @@ class GameplayOverlayController: UIViewController {
     @objc func handleButtonLongPress(_ gesture: UILongPressGestureRecognizer) {
         if !isEditMode || gesture.state != .began { return }
         guard let btn = gesture.view as? UIButton else { return }
-        
-        // Use a Custom Confirmation Panel (Tag 888) instead of a finicky UIAlertController
         let panel = UIView(frame: CGRect(x: 0, y: 0, width: 240, height: 120))
-        panel.center = view.center
-        panel.backgroundColor = UIColor(white: 0.1, alpha: 0.98)
-        panel.layer.cornerRadius = 16
-        panel.layer.borderWidth = 1
-        panel.layer.borderColor = UIColor.systemRed.withAlphaComponent(0.4).cgColor
-        panel.tag = 888
-        
+        panel.center = view.center; panel.backgroundColor = UIColor(white: 0.1, alpha: 0.98); panel.layer.cornerRadius = 16; panel.layer.borderWidth = 1; panel.layer.borderColor = UIColor.systemRed.withAlphaComponent(0.4).cgColor; panel.tag = 888
         let label = UILabel(frame: CGRect(x: 10, y: 15, width: 220, height: 40))
-        label.text = "Delete '\(btn.title(for: .normal) ?? "")'?"
-        label.textColor = .white; label.textAlignment = .center; label.font = .boldSystemFont(ofSize: 16); label.numberOfLines = 2
+        label.text = "Delete '\(btn.title(for: .normal) ?? "")'?"; label.textColor = .white; label.textAlignment = .center; label.font = .boldSystemFont(ofSize: 16); label.numberOfLines = 2
         panel.addSubview(label)
-        
-        let cancelBtn = UIButton(type: .system); cancelBtn.frame = CGRect(x: 15, y: 70, width: 100, height: 35)
-        cancelBtn.setTitle("Cancel", for: .normal); cancelBtn.setTitleColor(.white, for: .normal); cancelBtn.backgroundColor = .gray.withAlphaComponent(0.6); cancelBtn.layer.cornerRadius = 8
+        let cancelBtn = UIButton(type: .system); cancelBtn.frame = CGRect(x: 15, y: 70, width: 100, height: 35); cancelBtn.setTitle("Cancel", for: .normal); cancelBtn.setTitleColor(.white, for: .normal); cancelBtn.backgroundColor = .gray.withAlphaComponent(0.6); cancelBtn.layer.cornerRadius = 8
         cancelBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside); panel.addSubview(cancelBtn)
-        
-        let delBtn = UIButton(type: .system); delBtn.frame = CGRect(x: 125, y: 70, width: 100, height: 35)
-        delBtn.setTitle("Delete", for: .normal); delBtn.setTitleColor(.white, for: .normal); delBtn.backgroundColor = .systemRed.withAlphaComponent(0.8); delBtn.layer.cornerRadius = 8
-        
-        // Pass the button to be deleted as a reference via a closure or helper
+        let delBtn = UIButton(type: .system); delBtn.frame = CGRect(x: 125, y: 70, width: 100, height: 35); delBtn.setTitle("Delete", for: .normal); delBtn.setTitleColor(.white, for: .normal); delBtn.backgroundColor = .systemRed.withAlphaComponent(0.8); delBtn.layer.cornerRadius = 8
         delBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside)
         delBtn.addAction(UIAction { [weak self, weak btn] _ in
             btn?.removeFromSuperview()
             if let b = btn { self?.customButtons.removeAll { $0 == b } }
             self?.saveAllCustomButtons()
         }, for: .touchUpInside)
-        
-        panel.addSubview(delBtn)
-        view.addSubview(panel)
+        panel.addSubview(delBtn); view.addSubview(panel)
     }
 
     private func saveAllCustomButtons() {
@@ -423,6 +376,15 @@ private func sendNativeKey(scancode: Int32, state: Int32) {
     if let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, "SDL_SendVirtualKeyboardKey") {
         let sendKey = unsafeBitCast(sym, to: SendKeyFn.self)
         sendKey(state, scancode)
+    }
+}
+
+private func sendNativeMouseButton(button: UInt8, state: UInt8) {
+    typealias SendMouseFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt8, UInt8) -> Int32
+    if let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, "SDL_SendMouseButton") {
+        let sendMouse = unsafeBitCast(sym, to: SendMouseFn.self)
+        // Pass nil for window; SDL will usually route this to the focus window internally
+        _ = sendMouse(nil, 0, state, button)
     }
 }
 
