@@ -1,5 +1,7 @@
 # OpenMW for iOS
 
+[Buy me a coffee.](https://ko-fi.com/jareddavenport)
+
 [OpenMW](https://openmw.org) (the open-source Morrowind engine, 0.51.0) running
 natively on iPhone and the iOS Simulator.
 
