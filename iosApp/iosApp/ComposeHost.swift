@@ -58,7 +58,7 @@ class LauncherRootViewController: UIViewController {
     }
 }
 
-/// A native Thumbstick that maps to WASD keys.
+/// A native Thumbstick that maps to WASD keys and allows itself to be dragged.
 class VirtualThumbstick: UIView {
     private let baseView = UIView()
     private let stickView = UIView()
@@ -86,7 +86,39 @@ class VirtualThumbstick: UIView {
         stickView.center = CGPoint(x: radius, y: radius)
         stickView.backgroundColor = UIColor.white.withAlphaComponent(0.6)
         stickView.layer.cornerRadius = 25
+        stickView.isUserInteractionEnabled = false // Let parent handle touches
         addSubview(stickView)
+        
+        // Add pan gesture for draggability (use 2 fingers or long press if you want to distinguish from stick movement)
+        // For now, let's try a simple pan that only works if you start dragging from the outer ring.
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleMove(_:)))
+        pan.minimumNumberOfTouches = 1
+        // We'll use a delegate to allow it to coexist with touchesMoved if needed, 
+        // but for now, let's keep it simple: 
+        // A Long Press triggers draggability to avoid fighting with character movement.
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(longPress)
+    }
+    
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.alpha = 0.8
+            }
+        } else if gesture.state == .changed {
+            let location = gesture.location(in: superview)
+            self.center = location
+        } else if gesture.state == .ended || gesture.state == .cancelled {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = .identity
+                self.alpha = 1.0
+            }
+        }
+    }
+    
+    @objc private func handleMove(_ gesture: UIPanGestureRecognizer) {
+        // Optional: dedicated drag handle
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -125,15 +157,12 @@ class VirtualThumbstick: UIView {
             if dx > deadzone  { currentKeys.insert(7)  } // D
         }
         
-        // Release keys no longer active
         for key in activeKeys where !currentKeys.contains(key) {
             sendNativeKey(scancode: key, state: 0)
         }
-        // Press new keys
         for key in currentKeys where !activeKeys.contains(key) {
             sendNativeKey(scancode: key, state: 1)
         }
-        
         activeKeys = currentKeys
     }
     
@@ -150,43 +179,46 @@ class GameplayOverlayController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .clear
         
-        // Thumbstick on the left
+        // Setup Thumbstick
         let thumbstick = VirtualThumbstick()
-        thumbstick.translatesAutoresizingMaskIntoConstraints = false
+        thumbstick.frame = CGRect(x: 40, y: view.bounds.height - 160, width: 120, height: 120)
+        thumbstick.autoresizingMask = [.flexibleTopMargin, .flexibleRightMargin]
         view.addSubview(thumbstick)
         
-        // Buttons on the right
-        let buttonStack = UIStackView()
-        buttonStack.axis = .horizontal
-        buttonStack.spacing = 16
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(buttonStack)
+        // Setup Buttons (individual views to allow independent dragging)
+        let escBtn = createDraggableButton(title: "ESC", action: #selector(escTapped))
+        escBtn.center = CGPoint(x: view.bounds.width - 100, y: view.bounds.height - 60)
+        view.addSubview(escBtn)
         
-        NSLayoutConstraint.activate([
-            thumbstick.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 10),
-            thumbstick.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
-            thumbstick.widthAnchor.constraint(equalToConstant: 120),
-            thumbstick.heightAnchor.constraint(equalToConstant: 120),
-            
-            buttonStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24)
-        ])
-        
-        buttonStack.addArrangedSubview(createButton(title: "ESC", action: #selector(escTapped)))
-        buttonStack.addArrangedSubview(createButton(title: "ENT", action: #selector(entTapped)))
+        let entBtn = createDraggableButton(title: "ENT", action: #selector(entTapped))
+        entBtn.center = CGPoint(x: view.bounds.width - 40, y: view.bounds.height - 60)
+        view.addSubview(entBtn)
     }
     
-    private func createButton(title: String, action: Selector) -> UIButton {
+    private func createDraggableButton(title: String, action: Selector) -> UIButton {
         let btn = UIButton(type: .system)
+        btn.frame = CGRect(x: 0, y: 0, width: 50, height: 50)
         btn.setTitle(title, for: .normal)
         btn.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
         btn.setTitleColor(.white, for: .normal)
         btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         btn.layer.cornerRadius = 25
-        btn.widthAnchor.constraint(equalToConstant: 50).isActive = true
-        btn.heightAnchor.constraint(equalToConstant: 50).isActive = true
         btn.addTarget(self, action: action, for: .touchUpInside)
+        
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleButtonPan(_:)))
+        btn.addGestureRecognizer(pan)
+        
+        btn.autoresizingMask = [.flexibleTopMargin, .flexibleLeftMargin]
+        
         return btn
+    }
+    
+    @objc func handleButtonPan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        if let btn = gesture.view {
+            btn.center = CGPoint(x: btn.center.x + translation.x, y: btn.center.y + translation.y)
+        }
+        gesture.setTranslation(.zero, in: view)
     }
     
     @objc func escTapped() { sendNativeKey(scancode: 41, state: 1); sendNativeKey(scancode: 41, state: 0) }
@@ -213,8 +245,6 @@ private func startEngine() {
         window.isOpaque = false
         window.makeKeyAndVisible()
         overlayWindow = window
-        
-        // Hide original window using modern API
         scene.windows.first { $0 != window }?.isHidden = true
     }
 
@@ -239,10 +269,5 @@ private func sendNativeKey(scancode: Int32, state: Int32) {
 private func presentAlert(title: String, message: String) {
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .flatMap { $0.windows }
-        .first { $0.isKeyWindow }?
-        .rootViewController?
-        .present(alert, animated: true)
+    UIApplication.shared.windows.first { $0.isKeyWindow }?.rootViewController?.present(alert, animated: true)
 }
