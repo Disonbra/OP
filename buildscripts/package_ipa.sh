@@ -31,7 +31,10 @@ fi
 echo "=== 1. Staging libraries for ${MODE} ==="
 "${REPO_DIR}/buildscripts/stage_app_libs.sh" "${PLATFORM_TAG}"
 
-echo "=== 2. Cleaning project and environment ==="
+echo "=== 2. Patching Shaders for ${MODE} ==="
+"${REPO_DIR}/buildscripts/patch_shaders.sh"
+
+echo "=== 3. Cleaning project and environment ==="
 # Unset variables that can conflict with the Gradle build phase in Xcode
 unset ANDROID_PREFS_ROOT
 unset ANDROID_USER_HOME
@@ -39,7 +42,7 @@ unset ANDROID_USER_HOME
 cd "${REPO_DIR}"
 ./gradlew clean --no-configuration-cache
 
-echo "=== 3. Building iosApp (${MODE}, Release) ==="
+echo "=== 4. Building iosApp (${MODE}, Release) ==="
 mkdir -p "${XCODE_BUILD_DIR}"
 
 xcodebuild -project "${REPO_DIR}/iosApp/iosApp.xcodeproj" \
@@ -52,7 +55,7 @@ xcodebuild -project "${REPO_DIR}/iosApp/iosApp.xcodeproj" \
            CODE_SIGNING_REQUIRED=NO \
            CODE_SIGNING_ALLOWED=NO
 
-echo "=== 4. Locating built .app bundle ==="
+echo "=== 5. Locating built .app bundle ==="
 APP_PATH=$(find "${XCODE_BUILD_DIR}/Build/Products/${BUILD_SUBDIR}" -name "*.app" | head -1)
 
 if [ -z "$APP_PATH" ]; then
@@ -63,7 +66,7 @@ fi
 APP_NAME=$(basename "$APP_PATH")
 echo "Found app: ${APP_NAME}"
 
-echo "=== 5. Creating package: ${OUT_NAME} ==="
+echo "=== 6. Creating package: ${OUT_NAME} ==="
 rm -rf "${REPO_DIR}/Payload"
 mkdir -p "${REPO_DIR}/Payload"
 

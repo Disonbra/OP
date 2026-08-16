@@ -210,7 +210,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\n# Gradle needs a JDK; Xcode's environment has no JAVA_HOME by default.\nif [ -z \"$JAVA_HOME\" ] && [ -d /opt/homebrew/opt/openjdk ]; then\n  export JAVA_HOME=/opt/homebrew/opt/openjdk\nfi\n# Unset conflicting Android environment variables\nunset ANDROID_PREFS_ROOT\nunset ANDROID_USER_HOME\ncd \"$SRCROOT/..\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode --no-configuration-cache\n";
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\n# Clean up environment to prevent AGP conflicts\nunset ANDROID_USER_HOME\nunset ANDROID_PREFS_ROOT\nunset ANDROID_SDK_HOME\nexport ANDROID_USER_HOME=\"$HOME/.android\"\n# Gradle needs a JDK\nif [ -z \"$JAVA_HOME\" ] && [ -d /opt/homebrew/opt/openjdk ]; then\n  export JAVA_HOME=/opt/homebrew/opt/openjdk\nfi\ncd \"$SRCROOT/..\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode \\\n  -Pkotlin.native.apple.target=${PLATFORM_NAME:-iphoneos} \\\n  -Pkotlin.native.apple.archs=\"$(echo $ARCHS | cut -d' ' -f1)\" \\\n  --no-configuration-cache\n";
 		};
 		CC00000000000000000000B1 /* Select Platform Libraries */ = {
 			isa = PBXShellScriptBuildPhase;
