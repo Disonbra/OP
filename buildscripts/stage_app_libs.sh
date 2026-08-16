@@ -27,7 +27,6 @@ RESOURCES=(
     defaults.bin
     gamecontrollerdb.txt
     openmw.cfg
-    defaults-cs.bin
 )
 
 stage_platform() {
@@ -82,9 +81,16 @@ stage_platform() {
     # libopenmw comes from the engine build dir (the buildscript does not
     # install it into the prefix).
     local openmw=""
-    for candidate in \
-        "${prefix}/lib/libopenmw.dylib" \
-        "${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/MacOS/${openmw_config}/libopenmw.dylib"; do
+    # Check candidates: prefix, then the requested config, then fallbacks
+    local candidates=(
+        "${prefix}/lib/libopenmw.dylib"
+        "${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/MacOS/${openmw_config}/libopenmw.dylib"
+        "${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/MacOS/Release/libopenmw.dylib"
+        "${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/MacOS/Debug/libopenmw.dylib"
+        "${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/MacOS/RelWithDebInfo/libopenmw.dylib"
+    )
+
+    for candidate in "${candidates[@]}"; do
         if [ -e "${candidate}" ]; then openmw="${candidate}"; break; fi
     done
     if [ -z "${openmw}" ]; then
@@ -96,10 +102,10 @@ stage_platform() {
 }
 
 case "${1:-both}" in
-    device) stage_platform OS64 "${REPO_DIR}/iosApp/EmbeddedLibsDevice" Debug ;;
+    device) stage_platform OS64 "${REPO_DIR}/iosApp/EmbeddedLibsDevice" Release ;;
     sim)    stage_platform SIMULATORARM64 "${REPO_DIR}/iosApp/EmbeddedLibsSim" Release ;;
     both)
-        stage_platform OS64 "${REPO_DIR}/iosApp/EmbeddedLibsDevice" Debug
+        stage_platform OS64 "${REPO_DIR}/iosApp/EmbeddedLibsDevice" Release
         stage_platform SIMULATORARM64 "${REPO_DIR}/iosApp/EmbeddedLibsSim" Release
         ;;
     *) echo "usage: $0 [device|sim|both]" >&2; exit 1 ;;
