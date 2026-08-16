@@ -373,18 +373,30 @@ private func startEngine() {
 
 private func sendNativeKey(scancode: Int32, state: Int32) {
     typealias SendKeyFn = @convention(c) (Int32, Int32) -> Void
-    if let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, "SDL_SendVirtualKeyboardKey") {
+    guard let handle = dlopen(nil, RTLD_NOW) else {
+        print("Error: dlopen(nil) failed")
+        return
+    }
+    if let sym = dlsym(handle, "SDL_SendVirtualKeyboardKey") {
         let sendKey = unsafeBitCast(sym, to: SendKeyFn.self)
         sendKey(state, scancode)
+    } else {
+        print("Error: Could not find symbol SDL_SendVirtualKeyboardKey")
     }
 }
 
 private func sendNativeMouseButton(button: UInt8, state: UInt8) {
     typealias SendMouseFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt8, UInt8) -> Int32
-    if let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, "SDL_SendMouseButton") {
+    guard let handle = dlopen(nil, RTLD_NOW) else {
+        print("Error: dlopen(nil) failed")
+        return
+    }
+    if let sym = dlsym(handle, "SDL_SendMouseButton") {
         let sendMouse = unsafeBitCast(sym, to: SendMouseFn.self)
         // Pass nil for window; SDL will usually route this to the focus window internally
         _ = sendMouse(nil, 0, state, button)
+    } else {
+        print("Error: Could not find symbol SDL_SendMouseButton")
     }
 }
 

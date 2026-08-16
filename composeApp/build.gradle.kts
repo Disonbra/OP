@@ -56,6 +56,7 @@ kotlin {
             implementation(libs.filekit.coil)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
+            implementation(libs.okio)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

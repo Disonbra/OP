@@ -17,18 +17,3 @@ actual fun deleteFile(path: String): Boolean {
     val success = fm.removeItemAtPath(path, errorPtr.ptr)
     return success
 }
-
-@OptIn(ExperimentalForeignApi::class)
-actual fun isDirectory(path: String): Boolean {
-    val fileManager = NSFileManager.defaultManager
-
-    // Create URL from path
-    val url = NSURL.fileURLWithPath(path)
-
-    // Get file attributes
-    val error: NSError? = null
-    val attributes = fileManager.attributesOfItemAtPath(path, null)
-
-    // Check if it's a directory
-    return attributes?.get(NSFileType)?.equals(NSFileTypeDirectory) ?: false
-}

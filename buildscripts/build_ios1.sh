@@ -218,8 +218,16 @@ build_platform_lib() {
     local sdk_path=$(xcrun --sdk "${sdk_name}" --show-sdk-path)
 
     local gles_include="${sdk_path}/System/Library/Frameworks"
-    local gles_library="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
-    local gles_glx="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
+    local gles_library=""
+    local gles_glx=""
+
+    if [ "${platform}" == "SIMULATORARM64" ]; then
+        gles_library="/System/iOSSupport/System/Library/Frameworks/OpenGLES.framework/Versions/Current/Libraries/libGLVMPlugin.dylib"
+        gles_glx="/System/iOSSupport/System/Library/Frameworks/OpenGLES.framework/Versions/Current/Libraries/"
+    else
+        gles_library="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
+        gles_glx="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
+    fi
 
     mkdir -p "${build_dir}" && cd "${build_dir}"
     
@@ -254,6 +262,7 @@ build_platform_lib() {
         -DPNG_LIBRARY="${install_prefix}/lib/libpng16.a" \
         -DCOLLADA_INCLUDE_DIR="${install_prefix}/include/collada-dom2.5/" \
         -DCOLLADA_DOM_ROOT="${install_prefix}/include/collada-dom2.5/1.4/dom" \
+        -Dglslang_DIR="${install_prefix}/lib" \
         -Wno-deprecated -Wno-dev \
         -DIOS_DEPS_PREFIX="${install_prefix}" \
         "${extra_args[@]}"
@@ -516,6 +525,8 @@ if skip_if_installed "sdl2"; then true; else
         echo "=== Downloading and building SDL2 ==="
         wget -c https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz -O - | tar -xz
         patch -d ${SRC_DIR}/SDL2-${SDL2_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/sdl2_ios_scene.patch
+        # Fix missing khronos types in SDL_opengles2_gl2ext.h
+        #sed -i \u0027\u0027 \u0027s|#ifndef __gles2_gl2ext_h_|#include \"SDL_opengles2_khrplatform.h\"\\n#ifndef __gles2_gl2ext_h_|\u0027 \"${SRC_DIR}/SDL2-${SDL2_VERSION}/include/SDL_opengles2_gl2ext.h\"
     fi
 
     build_dual_platform "sdl2" "${SRC_DIR}/SDL2-${SDL2_VERSION}" \
@@ -737,7 +748,6 @@ if skip_if_installed "openmw"; then true; else
         patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/textures.patch
         patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/features.patch
         patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/misc.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/iosGLESomw.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \

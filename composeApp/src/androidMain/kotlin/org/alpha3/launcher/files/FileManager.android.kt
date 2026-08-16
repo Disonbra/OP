@@ -7,7 +7,3 @@ actual fun deleteFile(path: String): Boolean {
     return f.exists() && f.delete()
 }
 
-actual fun isDirectory(path: String): Boolean {
-    return File(path).isDirectory
-}
-

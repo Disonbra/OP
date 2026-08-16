@@ -1,0 +1,249 @@
+cmake_minimum_required(VERSION 3.20)
+project(OpenMW_iOS_Superbuild)
+
+include(ExternalProject)
+
+# ------------------- Configuration -------------------
+option(BUILD_FOR_SIMULATOR "Build for Simulator (ON) or Device (OFF)" ON)
+
+if(BUILD_FOR_SIMULATOR)
+    set(IOS_PLATFORM "SIMULATORARM64")
+    set(SDK_NAME "iphonesimulator")
+else()
+    set(IOS_PLATFORM "OS64")
+    set(SDK_NAME "iphoneos")
+endif()
+
+set(DEPLOYMENT_TARGET "16.2" CACHE STRING "iOS Deployment Target")
+set(COMMON_FLAGS "-O3 -fPIC -stdlib=libc++")
+
+# Paths
+set(WORK_DIR "${CMAKE_SOURCE_DIR}/ios_build")
+set(PREFIX "${WORK_DIR}/ios-libs/${IOS_PLATFORM}")
+set(SRC_DIR "${WORK_DIR}/src")
+set(PATCHES_DIR "${CMAKE_SOURCE_DIR}/buildscripts/patches")
+
+# Toolchain
+set(TOOLCHAIN_DIR "${WORK_DIR}/ios-cmake")
+set(TOOLCHAIN_FILE "${TOOLCHAIN_DIR}/ios.toolchain.cmake")
+
+# Ensure toolchain exists
+if(NOT EXISTS "${TOOLCHAIN_DIR}")
+    execute_process(COMMAND git clone https://github.com/leetal/ios-cmake.git "${TOOLCHAIN_DIR}")
+endif()
+
+# ------------------- Helper Macros -------------------
+
+macro(add_dep NAME URL)
+    ExternalProject_Add(${NAME}
+        URL ${URL}
+        PREFIX "${WORK_DIR}/${NAME}"
+        STAMP_DIR "${WORK_DIR}/stamps/${NAME}"
+        DOWNLOAD_DIR "${SRC_DIR}"
+        SOURCE_DIR "${SRC_DIR}/${NAME}"
+        CMAKE_ARGS
+            -G Xcode
+            -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE}
+            -DPLATFORM=${IOS_PLATFORM}
+            -DDEPLOYMENT_TARGET=${DEPLOYMENT_TARGET}
+            -DCMAKE_INSTALL_PREFIX=${PREFIX}
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_C_FLAGS=${COMMON_FLAGS}
+            -DCMAKE_CXX_FLAGS=${COMMON_FLAGS}
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            ${ARGN}
+        BUILD_COMMAND cmake --build . --config Release
+        INSTALL_COMMAND cmake --install . --config Release
+    )
+endmacro()
+
+# ------------------- Dependencies -------------------
+
+# zlib
+add_dep(zlib https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz)
+
+# bzip2
+add_dep(bzip2 https://github.com/libarchive/bzip2/archive/refs/heads/main.tar.gz
+    -DBUILD_SHARED_LIBS=OFF
+    -DBUILD_STATIC_LIBS=ON
+    -DENABLE_APP=OFF
+)
+
+# luajit (Uses custom Makefile)
+ExternalProject_Add(luajit
+    URL https://github.com/mpvkit/libluajit-build/archive/refs/heads/main.tar.gz
+    PREFIX "${WORK_DIR}/luajit"
+    SOURCE_DIR "${SRC_DIR}/luajit"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make build platform=${SDK_NAME} XCFLAGS+="-DLUAJIT_ENABLE_GC64"
+    INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory dist/release/libluajit/include/luajit-2.1/ ${PREFIX}/include/ &&
+        ${CMAKE_COMMAND} -E copy dist/release/libluajit/lib/${SDK_NAME}/thin/arm64/lib/libluajit.a ${PREFIX}/lib/
+    BUILD_IN_SOURCE 1
+)
+
+# FreeType
+add_dep(freetype https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-2.tar.gz
+    -DCMAKE_DISABLE_FIND_PACKAGE_ZLIB=TRUE
+    -DCMAKE_DISABLE_FIND_PACKAGE_BZip2=TRUE
+    -DCMAKE_DISABLE_FIND_PACKAGE_PNG=TRUE
+)
+
+# libjpeg-turbo
+add_dep(libjpeg-turbo https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.1.0.tar.gz
+    -DENABLE_SHARED=OFF
+)
+
+# libpng
+add_dep(libpng http://prdownloads.sourceforge.net/libpng/libpng-1.6.48.tar.xz
+    -DPNG_SHARED=OFF
+    -DPNG_STATIC=ON
+    -DPNG_TESTS=OFF
+    DEPENDS zlib
+)
+
+# OpenAL Soft
+add_dep(openal-soft https://github.com/kcat/openal-soft/archive/refs/tags/1.24.3.tar.gz
+    -DALSOFT_EXAMPLES=OFF
+    -DALSOFT_TESTS=OFF
+    -DALSOFT_UTILS=OFF
+    -DALSOFT_NO_CONFIG_UTIL=ON
+    -DALSOFT_BACKEND_WAVE=OFF
+)
+
+# SDL2
+add_dep(sdl2 https://github.com/libsdl-org/SDL/archive/refs/tags/release-2.32.4.tar.gz
+    -DSDL_STATIC=OFF
+    -DSDL_SHARED=ON
+    -DSDL_FORCE_GCC_FVISIBILITY=OFF
+    PATCH_COMMAND
+        patch -p1 < ${PATCHES_DIR}/sdl2_ios_scene.patch &&
+        sed -i '' 's|#ifndef __gles2_gl2ext_h_|#include "SDL_opengles2_khrplatform.h"\\n#ifndef __gles2_gl2ext_h_|' include/SDL_opengles2_gl2ext.h
+)
+
+# Bullet
+add_dep(bullet https://github.com/bulletphysics/bullet3/archive/refs/tags/3.25.tar.gz
+    -DBUILD_UNIT_TESTS=OFF
+    -DUSE_DOUBLE_PRECISION=ON
+    -DBULLET2_MULTITHREADING=ON
+    -DBUILD_SHARED_LIBS=OFF
+)
+
+# OSG (OpenSceneGraph)
+ExternalProject_Add(osg
+    GIT_REPOSITORY https://github.com/OpenMW/osg
+    GIT_TAG 638f0a1e73687633fd99bf110d04226e78ff69c6
+    PREFIX "${WORK_DIR}/osg"
+    STAMP_DIR "${WORK_DIR}/stamps/osg"
+    DOWNLOAD_DIR "${SRC_DIR}"
+    SOURCE_DIR "${SRC_DIR}/osg"
+    CMAKE_ARGS
+        -G Xcode
+        -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE}
+        -DPLATFORM=${IOS_PLATFORM}
+        -DDEPLOYMENT_TARGET=${DEPLOYMENT_TARGET}
+        -DCMAKE_INSTALL_PREFIX=${PREFIX}
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_FLAGS=${COMMON_FLAGS}
+        -DCMAKE_CXX_FLAGS=${COMMON_FLAGS}
+        -DOPENGL_PROFILE=GLES3
+        -DOSG_BUILD_PLATFORM_IPHONE=ON
+        -DOSG_WINDOWING_SYSTEM=IOS
+        -DDYNAMIC_OPENSCENEGRAPH=OFF
+        -DDYNAMIC_OPENTHREADS=OFF
+        -DOSG_GLES3_AVAILABLE=ON
+    PATCH_COMMAND
+        patch -p1 < ${PATCHES_DIR}/osg_iOS.patch &&
+        patch -p1 < ${PATCHES_DIR}/remove-lib-prefix-from-plugins.patch &&
+        patch -p1 < ${PATCHES_DIR}/fix-freetype-include-dirs.patch
+)
+
+# Boost
+add_dep(boost https://github.com/boostorg/boost/releases/download/boost-1.88.0/boost-1.88.0-cmake.tar.gz
+    -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system"
+    PATCH_COMMAND patch -d libs/system/ -p1 < ${PATCHES_DIR}/system.diff
+)
+
+# LZ4
+add_dep(lz4 https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz
+    SOURCE_SUBDIR build/cmake
+    -DBUILD_STATIC_LIBS=ON
+    -DBUILD_SHARED_LIBS=OFF
+)
+
+# Libogg
+add_dep(libogg https://github.com/xiph/ogg/archive/refs/tags/v1.3.5.tar.gz)
+
+# Vorbis
+add_dep(libvorbis https://github.com/xiph/vorbis/archive/refs/tags/v1.3.7.tar.gz
+    DEPENDS libogg
+)
+
+# glslang
+add_dep(glslang https://github.com/KhronosGroup/glslang/archive/refs/heads/master.tar.gz
+    -DBUILD_EXTERNAL=OFF
+    -DENABLE_OPT=OFF
+    -DENABLE_PCH=OFF
+    -DENABLE_GLSLANG_BINARIES=OFF
+)
+
+# SPIRV-Cross
+add_dep(spirv-cross https://github.com/KhronosGroup/SPIRV-Cross/archive/refs/heads/master.tar.gz
+    -DSPIRV_CROSS_CLI=OFF
+    -DSPIRV_CROSS_ENABLE_CPP=OFF
+    -DSPIRV_CROSS_ENABLE_HLSL=OFF
+    -DSPIRV_CROSS_ENABLE_MSL=OFF
+)
+
+# MyGUI
+add_dep(mygui https://github.com/MyGUI/mygui/archive/refs/tags/MyGUI3.4.3.tar.gz
+    -DMYGUI_RENDERSYSTEM=1
+    -DMYGUI_BUILD_DEMOS=OFF
+    -DMYGUI_BUILD_TOOLS=OFF
+    -DMYGUI_DONT_USE_OBSOLETE=ON
+    -DMYGUI_STATIC=ON
+    -DBUILD_SHARED_LIBS=OFF
+)
+
+# libxml2
+add_dep(libxml2 https://github.com/GNOME/libxml2/archive/refs/tags/v2.14.3.tar.gz
+    -DBUILD_SHARED_LIBS=OFF
+    -DLIBXML2_WITH_ICONV=OFF
+    -DLIBXML2_WITH_LZMA=OFF
+    -DLIBXML2_WITH_PROGRAMS=OFF
+    -DLIBXML2_WITH_PYTHON=OFF
+    -DLIBXML2_WITH_ZLIB=ON
+    DEPENDS zlib
+)
+
+# OpenMW (The Final Engine)
+ExternalProject_Add(openmw
+    GIT_REPOSITORY https://github.com/OpenMW/openmw
+    GIT_TAG 09243a3aa57f903ae69e541fc4d81617c8c4b15a
+    PREFIX "${WORK_DIR}/openmw"
+    STAMP_DIR "${WORK_DIR}/stamps/openmw"
+    DOWNLOAD_DIR "${SRC_DIR}"
+    SOURCE_DIR "${SRC_DIR}/openmw"
+    CMAKE_ARGS
+        -G Xcode
+        -DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE}
+        -DPLATFORM=${IOS_PLATFORM}
+        -DDEPLOYMENT_TARGET=${DEPLOYMENT_TARGET}
+        -DCMAKE_INSTALL_PREFIX=${PREFIX}
+        -DCMAKE_BUILD_TYPE=Release
+        -DOPENMW_USE_SYSTEM_SQLITE3=OFF
+        -DOPENMW_USE_SYSTEM_YAML_CPP=OFF
+        -DLUA_HAS_CUSTOM_ALLOCATOR=ON
+        -DOSG_STATIC=TRUE
+        -DCMAKE_CXX_STANDARD=20
+    PATCH_COMMAND
+        patch -p1 < ${PATCHES_DIR}/OpenMW_iOS_2.patch &&
+        patch -p1 < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch &&
+        patch -p1 < ${PATCHES_DIR}/ktx.patch &&
+        patch -p1 < ${PATCHES_DIR}/allow-more-es-versions.patch &&
+        patch -p1 < ${PATCHES_DIR}/GLES-3-OMW.patch &&
+        patch -p1 < ${PATCHES_DIR}/textures.patch &&
+        patch -p1 < ${PATCHES_DIR}/features.patch &&
+        patch -p1 < ${PATCHES_DIR}/misc.patch
+    DEPENDS osg bullet sdl2 openal-soft zlib boost mygui glslang spirv-cross libvorbis
+)

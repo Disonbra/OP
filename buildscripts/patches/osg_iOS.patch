@@ -37,51 +37,49 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
  
          # optionally enable bitcode for the build
          SET (IPHONE_ENABLE_BITCODE "NO" CACHE STRING "IOS Enable Bitcode")
-@@ -235,12 +242,15 @@
+@@ -235,12 +242,14 @@
  IF(APPLE)
  
      IF(OSG_BUILD_PLATFORM_IPHONE)
-+        UNSET(OPENGL_gl_LIBRARY CACHE)
-+        UNSET(OPENGL_INCLUDE_DIR CACHE)
-+	FIND_PACKAGE(OpenGL)
- 
+-
          # set the sdk path as our sysroot, if we set this before the project is defined cmake fails to build its test program
          SET(CMAKE_OSX_SYSROOT "${IPHONE_SDKROOT}" CACHE STRING "System root for iOS" FORCE)
  
          # Set the path to OpenGL library
 -        SET(OPENGL_gl_LIBRARY "${IPHONE_SDKROOT}/System/Library/Frameworks/OpenGLES.framework")
-+        #SET(OPENGL_gl_LIBRARY "${IPHONE_SDKROOT}/System/Library/Frameworks/OpenGLES.framework")
++        IF(NOT DEFINED OPENGL_gl_LIBRARY)
++            SET(OPENGL_gl_LIBRARY "${IPHONE_SDKROOT}/System/Library/Frameworks/OpenGLES.framework" CACHE STRING "" FORCE)
++        ENDIF()
++        SET(OPENGL_LIBRARIES ${OPENGL_gl_LIBRARY})
  
      ELSE ()
          FIND_LIBRARY(CARBON_LIBRARY Carbon)
-@@ -314,6 +324,7 @@
+@@ -314,6 +323,9 @@
  INCLUDE_DIRECTORIES(${OpenSceneGraph_SOURCE_DIR}/include/)
  
  INCLUDE_DIRECTORIES(SYSTEM ${OPENGL_INCLUDE_DIR})
-+INCLUDE_DIRECTORIES(/Users/mac/Documents/ios_build/ios-libs/include/gl4es )
++IF(NOT DEFINED OPENGL_INCLUDE_DIR)
++    INCLUDE_DIRECTORIES(${IPHONE_SDKROOT}/System/Library/Frameworks/OpenGLES.framework/Headers)
++ENDIF()
  
  # Common global definitions
  #ADD_DEFINITIONS(-D)
-@@ -597,8 +608,8 @@
+@@ -597,8 +609,13 @@
      ENDIF()
  ELSE()
      IF (APPLE)
 -        SET(OPENGL_HEADER1 "#include <OpenGL/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
 -        SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
-+        set(OPENGL_HEADER1 "#include <gl4es/include/GL/gl.h>" CACHE STRING "" FORCE) 
-+	set(OPENGL_HEADER2 "" CACHE STRING "" FORCE)
++        IF(OSG_BUILD_PLATFORM_IPHONE)
++            SET(OPENGL_HEADER1 "#include <OpenGLES/ES3/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
++            SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
++        ELSE()
++            SET(OPENGL_HEADER1 "#include <OpenGL/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
++            SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
++        ENDIF()
      ELSE()
          SET(OPENGL_HEADER1 "#include <GL/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
          SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
-@@ -823,6 +834,8 @@
- # The downside to the latter is that it is harder to build those
- # potentially redundant modules.)
- 
-+FIND_PACKAGE(PNG)
-+
- # Image readers/writers depend on 3rd party libraries except for OS X which
- # can use Quicktime.
- IF(NOT (ANDROID AND OSG_FIND_3RD_PARTY_DEPS))
 diff --git a/src/OpenThreads/pthreads/CMakeLists.txt b/src/OpenThreads/pthreads/CMakeLists.txt
 index e18969c..54013d7 100644
 --- a/src/OpenThreads/pthreads/CMakeLists.txt
@@ -193,22 +191,31 @@ index 3c61dae..df2be1f 100644
      }
  
      #elif defined(COMPILE_CARBON_VERSION)
+
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0a5f61b0d62..9afb0a99f49 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -761,6 +761,7 @@ ELSE()
+     FIND_PACKAGE(COLLADA)
+     FIND_PACKAGE(FBX)
+     FIND_PACKAGE(ZLIB)
++    FIND_PACKAGE(PNG)
+     FIND_PACKAGE(GDAL)
+     FIND_PACKAGE(GTA)
+     FIND_PACKAGE(CURL)
+
+diff --git a/src/osg/GLExtensions.cpp b/src/osg/GLExtensions.cpp
+index 0982870..ea52786 100644
 --- a/src/osg/GLExtensions.cpp
 +++ b/src/osg/GLExtensions.cpp
-@@ -378,6 +378,16 @@
+@@ -1170,7 +1170,7 @@ GLExtensions::GLExtensions(unsigned int in_contextID):
  
-             // return dlsym( RTLD_DEFAULT, funcName );
-             static void *handle = dlopen((const char *)0L, RTLD_LAZY);
-+            // gl4es exports its functions with a gl4es_ prefix on Apple
-+            // (Mach-O has no symbol aliasing), so prefer those to keep every
-+            // GL call inside the translation layer instead of hitting the
-+            // raw GLES driver behind its back.
-+            {
-+                std::string gl4esName("gl4es_");
-+                gl4esName += funcName;
-+                if (void* gl4esFunc = dlsym(handle, gl4esName.c_str()))
-+                    return gl4esFunc;
-+            }
-             return dlsym(handle, funcName);
-         #endif
+ 
+     isPackedDepthStencilSupported = validContext &&
+-                                    (OSG_GL3_FEATURES ||
++                                    (OSG_GL3_FEATURES || OSG_GLES3_FEATURES ||
+                                      (isGLExtensionSupported(contextID, "GL_EXT_packed_depth_stencil")) ||
+                                      (isGLExtensionSupported(contextID, "GL_OES_packed_depth_stencil")));
  

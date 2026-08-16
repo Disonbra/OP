@@ -16,7 +16,6 @@ OPENMW_SRC=$(ls -d "${WORK_DIR}/src/"openmw-* 2>/dev/null | head -1)
 
 DYLIBS=(
     libSDL2-2.0.0.dylib
-    libGL.dylib
     libopenal.1.dylib
     libcollada-dom2.5-dp.0.dylib
     libbz2.1.dylib
@@ -24,10 +23,19 @@ DYLIBS=(
     libz.1.dylib
 )
 
+RESOURCES=(
+    defaults.bin
+    gamecontrollerdb.txt
+    openmw.cfg
+    defaults-cs.bin
+)
+
 stage_platform() {
     local platform="$1" dest="$2" openmw_config="$3"
     local prefix="${WORK_DIR}/ios-libs/${platform}"
+    local assets_dest="${REPO_DIR}/iosApp/OpenMWAssets"
     mkdir -p "${dest}"
+    mkdir -p "${assets_dest}"
 
     for lib in "${DYLIBS[@]}"; do
         if [ ! -e "${prefix}/lib/${lib}" ]; then
@@ -36,6 +44,36 @@ stage_platform() {
         fi
         cp -L "${prefix}/lib/${lib}" "${dest}/${lib}"
     done
+
+    # Copy resources to OpenMWAssets
+    local resources_src="${OPENMW_SRC}/build_openmw_${platform}/OpenMW.app/Contents/Resources"
+    for res in "${RESOURCES[@]}"; do
+        if [ -e "${resources_src}/${res}" ]; then
+            cp -L "${resources_src}/${res}" "${assets_dest}/${res}"
+            echo "Copied ${res} to OpenMWAssets"
+        elif [ -e "${resources_src}/${openmw_config}/${res}" ]; then
+            cp -L "${resources_src}/${openmw_config}/${res}" "${assets_dest}/${res}"
+            echo "Copied ${openmw_config}/${res} to OpenMWAssets"
+        else
+            echo "WARNING: Resource ${res} not found in ${resources_src} (or ${openmw_config}/ subfolder)"
+        fi
+    done
+
+    # Copy the resources folder (always from Release)
+    if [ -d "${resources_src}/Release/resources" ]; then
+        echo "Copying resources folder from Release..."
+        rm -rf "${assets_dest}/resources"
+        cp -R "${resources_src}/Release/resources" "${assets_dest}/resources"
+        echo "Copied resources folder to OpenMWAssets"
+    fi
+
+    # Fix openmw.cfg to use local paths
+    if [ -f "${assets_dest}/openmw.cfg" ]; then
+        sed -i '' 's|\${OPENMW_RESOURCE_FILES}|resources|g' "${assets_dest}/openmw.cfg"
+        sed -i '' 's|resources=../Resources/resources|resources=resources|g' "${assets_dest}/openmw.cfg"
+        sed -i '' 's|data=../Resources/resources/vfs-mw|data=resources/vfs-mw|g' "${assets_dest}/openmw.cfg"
+    fi
+
     # SDL's debug build names itself libSDL2-2.0d; normalise the id so it
     # matches libopenmw's load command.
     install_name_tool -id @rpath/libSDL2-2.0.0.dylib "${dest}/libSDL2-2.0.0.dylib"

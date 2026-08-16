@@ -12,44 +12,64 @@ import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.InternalCoroutinesApi
-import org.alpha3.launcher.files.FileBrowser
-import org.alpha3.launcher.files.createTestFiles
+import org.alpha3.launcher.files.*
 import org.alpha3.launcher.globals.PlayBridge
 import org.alpha3.launcher.mods.ModValuesList
 import org.alpha3.launcher.mods.readModValues
 import org.alpha3.launcher.paths.OpenMWPaths
 import org.alpha3.launcher.utils.BouncingBackground
 import org.alpha3.launcher.utils.ReadAndDisplayIniValues
+import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
+import kotlinx.coroutines.launch
+import org.alpha3.launcher.utils.patchShadersLinking
+import org.alpha3.launcher.utils.patchShadersToGLES
+
 
 @OptIn(DelicateCoroutinesApi::class)
 @ExperimentalFoundationApi
 @Composable
 @Preview
 fun App() {
+    println("APP COMPOSABLE START")
     LaunchedEffect(Unit) {
+        println("LAUNCHED EFFECT START")
         println("=========================================================================")
         println("IOS SIMULATOR APP PATHS:")
         println("Documents: ${OpenMWPaths.SECOND_USER_FILE_STORAGE}")
         println("Config: ${OpenMWPaths.USER_CONFIG}")
         println("To open in Finder run:")
         println("open ${OpenMWPaths.SECOND_USER_FILE_STORAGE}")
+        println("Resources Path: ${OpenMWPaths.USER_RESOURCES}")
         println("=========================================================================")
+        //patchShadersLinking()
+        //patchShadersToGLES()
     }
 
     MaterialTheme {
         var showContent by remember { mutableStateOf(false) }
-        val modValues = readModValues()
+        val modValues = remember { readModValues() }
+        val scope = rememberCoroutineScope()
+        
+        var isImporting by remember { mutableStateOf(false) }
+
+        val launcher = rememberDirectoryPickerLauncher { directory ->
+            directory?.let { dir ->
+                scope.launch {
+                    isImporting = true
+                    val dest = OpenMWPaths.SECOND_USER_FILE_STORAGE + "/Data Files"
+                    val success = copyPlatformFileToDirectory(dir, dest)
+                    println("Import result: $success to $dest")
+                    isImporting = false
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -70,12 +90,16 @@ fun App() {
                         Text("Play")
                     }
                 }
+                
+                Button(onClick = { launcher.launch() }, enabled = !isImporting) {
+                    Text(if (isImporting) "Importing..." else "Import Game Folder")
+                }
+
                 Button(onClick = { showContent = !showContent }) {
                     Text("Settings")
                 }
                 AnimatedVisibility(showContent) {
                     val appPath = OpenMWPaths.USER_FILE_STORAGE
-                    //val files = remember(showContent) { listFilesInDirectory(appPath) }
 
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -85,7 +109,6 @@ fun App() {
 
                         Button(onClick = { createTestFiles(appPath) }) { Text("Create Test Files") }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            //Text("Path: $appPath", fontSize = 12.sp, color = Color.White)
                             FileBrowser(startPath = appPath)
                         }
                     }

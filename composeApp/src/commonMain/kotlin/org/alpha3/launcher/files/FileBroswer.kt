@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 expect fun deleteFile(path: String): Boolean
-expect fun isDirectory(path: String): Boolean
 
 @Composable
 fun FileBrowser(startPath: String) {
@@ -48,12 +47,8 @@ fun FileBrowser(startPath: String) {
 
         // File list
         LazyColumn {
-            items(files) { name ->
-                val fullPath = if (currentPath.isNotEmpty()) {
-                    "$currentPath/$name"
-                } else {
-                    name
-                }
+            items(files) { fullPath ->
+                val name = fullPath.substringAfterLast("/")
                 val directory = isDirectory(fullPath)
                 var expanded by remember { mutableStateOf(false) }
 
