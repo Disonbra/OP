@@ -8,6 +8,29 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// Provide defaults for Xcode properties to avoid "no value available" errors
+project.extra.set("kotlin.native.apple.archs", project.findProperty("kotlin.native.apple.archs") ?: "arm64")
+project.extra.set("kotlin.native.apple.target", project.findProperty("kotlin.native.apple.target") ?: "iphoneos")
+project.extra.set("kotlin.native.apple.configuration", project.findProperty("kotlin.native.apple.configuration") ?: "Debug")
+
+// Provide defaults for Xcode properties to avoid "no value available" errors
+// This is necessary because the Compose plugin tries to read these even when not building from Xcode
+project.extra.set("kotlin.native.apple.archs", project.findProperty("kotlin.native.apple.archs") ?: "arm64")
+project.extra.set("kotlin.native.apple.target", project.findProperty("kotlin.native.apple.target") ?: "iphoneos")
+project.extra.set("kotlin.native.apple.configuration", project.findProperty("kotlin.native.apple.configuration") ?: "Debug")
+
+// Targeted fix for the SyncComposeResourcesForIosTask crash
+tasks.matching { it.name.contains("syncComposeResources", ignoreCase = true) }.configureEach {
+    try {
+        val getXcodeTargetArchs = this.javaClass.getMethod("getXcodeTargetArchs")
+        val archs = getXcodeTargetArchs.invoke(this) as? org.gradle.api.provider.ListProperty<String>
+        archs?.convention(listOf("arm64"))
+    } catch (e: Exception) {
+        // Fallback: if we can't set the convention, just disable the task
+        enabled = false
+    }
+}
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -56,6 +79,7 @@ kotlin {
             implementation(libs.filekit.coil)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
+            implementation(libs.okio)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -92,5 +116,57 @@ android {
 
 dependencies {
     debugImplementation(compose.uiTooling)
+}
+
+tasks.register("printIosDeviceInfo") {
+    group = "help"
+    description = "Prints information about connected iOS Simulators and physical devices"
+    doLast {
+        val bundleId = "org.alpha3.launcher.Alpha3"
+        
+        println("\n--- iOS Simulator ---")
+        val simCmd = "xcrun simctl list devices | grep '(Booted)' | head -1 | grep -oE '[0-9A-F-]{36}'"
+        val simId = try {
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", simCmd))
+            process.inputStream.bufferedReader().readText().trim()
+        } catch (e: Exception) { "" }
+
+        if (simId.isNotEmpty()) {
+            val pathCmd = "xcrun simctl get_app_container $simId $bundleId data"
+            val path = try {
+                val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", pathCmd))
+                process.inputStream.bufferedReader().readText().trim()
+            } catch (e: Exception) { "" }
+            
+            if (path.isNotEmpty()) {
+                println("Booted Simulator ID: $simId")
+                println("App Documents Path: $path/Documents")
+                println("App Support Path:   $path/Library/Application Support/Alpha3")
+                println("Resources Path:     $path/Library/Application Support/Alpha3/resources")
+                println("\nTo open Resources in Finder run:")
+                println("open \"$path/Library/Application Support/Alpha3/resources\"")
+            } else {
+                println("Booted Simulator: $simId (App not installed)")
+            }
+        } else {
+            println("No booted iOS Simulator found.")
+        }
+
+        println("\n--- Physical iOS Devices ---")
+        val deviceCmd = "xcrun devicectl list devices --hide-headers --columns identifier,model,name"
+        val devices = try {
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", deviceCmd))
+            process.inputStream.bufferedReader().readText().trim()
+        } catch (e: Exception) { "" }
+
+        if (devices.isNotEmpty() && !devices.contains("No devices found")) {
+            println(devices)
+            println("\nTo install on device, use:")
+            println("buildscripts/install_on_device.sh")
+        } else {
+            println("No physical iOS devices detected via USB/Network.")
+        }
+        println("")
+    }
 }
 

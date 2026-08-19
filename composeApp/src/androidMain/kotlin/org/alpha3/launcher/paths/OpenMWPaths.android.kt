@@ -87,6 +87,11 @@ actual object OpenMWPaths {
 
     actual val CACHE_DIR: String =
         Environment.getExternalStorageDirectory().toString() + "/Alpha3/OpenMW/CACHE"
+
+    actual fun setupResources() {
+        // No-op for now, assuming user provides data or it's handled elsewhere
+        File(USER_RESOURCES).mkdirs()
+    }
 }
 
 

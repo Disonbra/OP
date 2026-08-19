@@ -7,6 +7,7 @@ struct LegacyLauncherView: View {
     @State private var gameData: OpenMWLauncher.GameData?
     @State private var launchError: String?
     @State private var isLaunching = false
+    @State private var showLogs = false
 
     private var hasMorrowind: Bool {
         gameData?.contentFiles.contains { $0.lowercased() == "morrowind.esm" } ?? false
@@ -18,6 +19,19 @@ struct LegacyLauncherView: View {
 
             VStack(spacing: 24) {
                 Spacer()
+
+                HStack {
+                    Spacer()
+                    Button(action: { showLogs.toggle() }) {
+                        Label("Logs", systemImage: "terminal")
+                            .font(.caption.bold())
+                            .padding(8)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                    .padding(.trailing)
+                    .foregroundColor(.white)
+                }
 
                 Text("OpenMW")
                     .font(.system(size: 44, weight: .bold, design: .serif))
@@ -97,6 +111,7 @@ struct LegacyLauncherView: View {
             }
         }
         .onAppear(perform: rescan)
+        .engineLogOverlay(isPresented: $showLogs)
     }
 
     private func rescan() {

@@ -14,3 +14,9 @@ val gradientColors = listOf(
     Color(0xFF3F76D2),
     Color(0xFF3B5FBA)
 )
+
+val editableExtensions = setOf(
+    "cfg", "txt", "ini", "log",
+    "glsl", "vert", "frag", "comp", "h",
+    "lua", "yaml", "xml", "json", "sh"
+)

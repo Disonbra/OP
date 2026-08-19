@@ -26,4 +26,7 @@ expect object OpenMWPaths {
     val CRASH_FILE: String
     val INTERNAL_CRASH_FILE: String
     val CACHE_DIR: String
+    val LIBRARY_ROOT: String
+
+    fun setupResources()
 }

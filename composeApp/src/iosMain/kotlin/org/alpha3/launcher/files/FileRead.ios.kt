@@ -7,8 +7,5 @@ actual fun readTextFile(path: String): String? {
     return NSString.create(data, NSUTF8StringEncoding) as String?
 }
 
-actual fun readTextFile2(path: String): String =
-    NSFileManager.defaultManager.contentsAtPath(path)
-        ?.toString()
-        ?: ""
+actual fun readTextFile2(path: String): String = readTextFile(path) ?: ""
 
