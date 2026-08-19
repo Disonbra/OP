@@ -81,13 +81,19 @@ class LauncherRootViewController: UIViewController {
 }
 
 class VirtualThumbstick: UIView {
+    enum Mode {
+        case joystick
+        case mouse
+    }
+    
+    private let mode: Mode
     private let baseView = UIView()
     private let stickView = UIView()
     private let radius: CGFloat = 60
-    private var activeKeys = Set<Int32>()
     var isLocked = true
     
-    override init(frame: CGRect) {
+    init(frame: CGRect, mode: Mode = .joystick) {
+        self.mode = mode
         super.init(frame: frame)
         setup()
     }
@@ -128,7 +134,8 @@ class VirtualThumbstick: UIView {
                 self.transform = .identity
                 self.alpha = 1.0
             }
-            UserDefaults.standard.set(NSCoder.string(for: self.center), forKey: "OverlayThumbstickCenter_v7")
+            let key = mode == .joystick ? "OverlayThumbstickCenter_v7" : "OverlayRightStickCenter_v7"
+            UserDefaults.standard.set(NSCoder.string(for: self.center), forKey: key)
         }
     }
     
@@ -143,36 +150,45 @@ class VirtualThumbstick: UIView {
         let angle = atan2(dy, dx)
         let cappedDistance = min(distance, radius)
         stickView.center = CGPoint(x: centerX + cos(angle) * cappedDistance, y: centerY + sin(angle) * cappedDistance)
-        updateWASD(dx: dx, dy: dy, distance: cappedDistance)
+        
+        if mode == .joystick {
+            updateJoystick(dx: dx, dy: dy, distance: cappedDistance)
+        } else {
+            // Mouse look relative motion
+            let sensitivity: CGFloat = 0.4
+            sendNativeMouseMotion(x: Int32(dx * sensitivity), y: Int32(dy * sensitivity))
+        }
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         stickView.center = CGPoint(x: radius, y: radius)
-        resetKeys()
-    }
-    
-    private func updateWASD(dx: CGFloat, dy: CGFloat, distance: CGFloat) {
-        let deadzone: CGFloat = 15
-        var currentKeys = Set<Int32>()
-        if distance > deadzone {
-            if dy < -deadzone { currentKeys.insert(26) } // W
-            if dy > deadzone  { currentKeys.insert(22) } // S
-            if dx < -deadzone { currentKeys.insert(4)  } // A
-            if dx > deadzone  { currentKeys.insert(7)  } // D
+        if mode == .joystick {
+            resetJoystick()
         }
-        for key in activeKeys where !currentKeys.contains(key) { sendNativeKey(scancode: key, state: 0) }
-        for key in currentKeys where !activeKeys.contains(key) { sendNativeKey(scancode: key, state: 1) }
-        activeKeys = currentKeys
     }
     
-    private func resetKeys() {
-        for key in activeKeys { sendNativeKey(scancode: key, state: 0) }
-        activeKeys.removeAll()
+    private func updateJoystick(dx: CGFloat, dy: CGFloat, distance: CGFloat) {
+        let deadzone: CGFloat = 5
+        if distance < deadzone {
+            resetJoystick()
+            return
+        }
+        let normX = max(-1.0, min(1.0, dx / radius))
+        let normY = max(-1.0, min(1.0, dy / radius))
+        NativeJoystick.shared.setAxis(0, value: Int16(normX * 32767))
+        NativeJoystick.shared.setAxis(1, value: Int16(normY * 32767))
+    }
+    
+    private func resetJoystick() {
+        NativeJoystick.shared.setAxis(0, value: 0)
+        NativeJoystick.shared.setAxis(1, value: 0)
     }
 }
 
 class GameplayOverlayController: UIViewController {
-    var thumbstick: VirtualThumbstick!
+    static var shared: GameplayOverlayController?
+    var leftStick: VirtualThumbstick!
+    var rightStick: VirtualThumbstick!
     var customButtons: [UIButton] = []
     var isEditMode = false
     let toolbar = UIView()
@@ -180,6 +196,7 @@ class GameplayOverlayController: UIViewController {
     let logsBtn = UIButton(type: .system)
     let addBtn = UIButton(type: .system)
     let mouseIndicator = UIView()
+    let cursorView = UIImageView()
     private var displayLink: CADisplayLink?
     private var layoutDone = false
 
@@ -195,11 +212,16 @@ class GameplayOverlayController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        GameplayOverlayController.shared = self
         view.backgroundColor = .clear
-        thumbstick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
-        view.addSubview(thumbstick)
         
-        // Toolbar container for easy grouping
+        leftStick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120), mode: .joystick)
+        view.addSubview(leftStick)
+        
+        rightStick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120), mode: .mouse)
+        view.addSubview(rightStick)
+        
+        // Toolbar container
         toolbar.frame = CGRect(x: 24, y: 24, width: 180, height: 44)
         toolbar.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         toolbar.layer.cornerRadius = 22
@@ -225,23 +247,58 @@ class GameplayOverlayController: UIViewController {
         
         mouseIndicator.frame = CGRect(x: 136, y: 17, width: 10, height: 10)
         mouseIndicator.layer.cornerRadius = 5
-        mouseIndicator.backgroundColor = .systemRed
+        mouseIndicator.backgroundColor = .systemGray
         toolbar.addSubview(mouseIndicator)
         
-        setupDisplayLink()
+        // Cursor icon - Solid Red Circle for guaranteed visibility
+        cursorView.image = nil
+        cursorView.backgroundColor = .systemRed
+        cursorView.layer.borderColor = UIColor.white.cgColor
+        cursorView.layer.borderWidth = 2
+        cursorView.frame = CGRect(x: 0, y: 0, width: 16, height: 16)
+        cursorView.layer.cornerRadius = 8
+        cursorView.layer.zPosition = 9999
+        cursorView.isHidden = true
+        view.addSubview(cursorView)
+        
         loadAllCustomButtons()
-    }
 
-    private func setupDisplayLink() {
-        displayLink = CADisplayLink(target: self, selector: #selector(updateMouseStatus))
+        // Polling display link
+        displayLink = CADisplayLink(target: self, selector: #selector(updateFrame))
         displayLink?.add(to: .main, forMode: .common)
     }
 
-    @objc private func updateMouseStatus() {
-        let isShown = isMouseShown()
-        mouseIndicator.backgroundColor = isShown ? .systemGreen : .systemRed
+    @objc private func updateFrame() {
+        let shown = checkMouseState()
+        mouseIndicator.backgroundColor = shown ? .systemGreen : .systemRed
+        
+        if shown {
+            var mx: Int32 = 0
+            var my: Int32 = 0
+            getNativeMouseState(x: &mx, y: &my)
+            
+            // Get the engine's window size
+            var ww: Int32 = 0
+            var wh: Int32 = 0
+            getNativeWindowSize(width: &ww, height: &wh)
+            
+            if ww > 0 && wh > 0 {
+                // Map engine pixels to iOS view points
+                let scaleX = view.bounds.width / CGFloat(ww)
+                let scaleY = view.bounds.height / CGFloat(wh)
+                cursorView.center = CGPoint(x: CGFloat(mx) * scaleX, y: CGFloat(my) * scaleY)
+            } else {
+                // Fallback to raw points if window size lookup fails
+                cursorView.center = CGPoint(x: CGFloat(mx), y: CGFloat(my))
+            }
+            
+            cursorView.isHidden = false
+            view.bringSubviewToFront(cursorView)
+        } else {
+            cursorView.isHidden = true
+        }
     }
-    
+
     deinit {
         displayLink?.invalidate()
     }
@@ -250,7 +307,8 @@ class GameplayOverlayController: UIViewController {
         isEditMode.toggle()
         lockBtn.setImage(UIImage(systemName: isEditMode ? "lock.open.fill" : "lock.fill"), for: .normal)
         lockBtn.tintColor = isEditMode ? .systemYellow : .white
-        thumbstick.isLocked = !isEditMode
+        leftStick.isLocked = !isEditMode
+        rightStick.isLocked = !isEditMode
         for btn in customButtons {
             if let recognizers = btn.gestureRecognizers {
                 for r in recognizers { r.isEnabled = isEditMode }
@@ -265,9 +323,14 @@ class GameplayOverlayController: UIViewController {
         if !layoutDone && screen.width > 200 {
             layoutDone = true
             if let saved = UserDefaults.standard.string(forKey: "OverlayThumbstickCenter_v7") {
-                thumbstick.center = NSCoder.cgPoint(for: saved)
+                leftStick.center = NSCoder.cgPoint(for: saved)
             } else {
-                thumbstick.center = CGPoint(x: 80, y: screen.height - 80)
+                leftStick.center = CGPoint(x: 80, y: screen.height - 80)
+            }
+            if let saved = UserDefaults.standard.string(forKey: "OverlayRightStickCenter_v7") {
+                rightStick.center = NSCoder.cgPoint(for: saved)
+            } else {
+                rightStick.center = CGPoint(x: screen.width - 80, y: screen.height - 80)
             }
             if customButtons.isEmpty && UserDefaults.standard.array(forKey: "CustomButtonsList_v7") == nil {
                 createAndAddButton(name: "LCLICK", scancode: 1, at: CGPoint(x: screen.width - 150, y: screen.height - 130))
@@ -437,9 +500,56 @@ private func startEngine() {
     }
 }
 
-private func isMouseShown() -> Bool {
+private class NativeJoystick {
+    static let shared = NativeJoystick()
+    private var joystick: UnsafeMutableRawPointer?
+    private var handle: UnsafeMutableRawPointer?
+
+    init() {
+        self.handle = dlopen(nil, RTLD_NOW)
+    }
+
+    private func ensureAttached() {
+        if joystick != nil { return }
+        
+        typealias AttachFn = @convention(c) (Int32, Int32, Int32, Int32) -> Int32
+        typealias OpenFn = @convention(c) (Int32) -> UnsafeMutableRawPointer?
+        
+        guard let handle = handle else { return }
+        
+        if let attachSym = dlsym(handle, "SDL_JoystickAttachVirtual"),
+           let openSym = dlsym(handle, "SDL_JoystickOpen") {
+            
+            let attach = unsafeBitCast(attachSym, to: AttachFn.self)
+            let open = unsafeBitCast(openSym, to: OpenFn.self)
+            
+            // Type 1 = SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2 axes, 0 buttons, 0 hats
+            let index = attach(1, 2, 0, 0)
+            if index >= 0 {
+                self.joystick = open(index)
+                print("NativeJoystick: Attached virtual joystick at index \(index)")
+            } else {
+                print("NativeJoystick: Failed to attach virtual joystick")
+            }
+        }
+    }
+
+    func setAxis(_ axis: Int32, value: Int16) {
+        ensureAttached()
+        guard let joystick = joystick, let handle = handle else { return }
+        
+        typealias SetAxisFn = @convention(c) (UnsafeMutableRawPointer?, Int32, Int16) -> Int32
+        if let sym = dlsym(handle, "SDL_JoystickSetVirtualAxis") {
+            let setAxis = unsafeBitCast(sym, to: SetAxisFn.self)
+            _ = setAxis(joystick, axis, value)
+        }
+    }
+}
+
+private func checkMouseState() -> Bool {
     typealias ShowCursorFn = @convention(c) (Int32) -> Int32
-    guard let handle = dlopen(nil, RTLD_NOW) else { return false }
+    // Use RTLD_DEFAULT to search all loaded libraries
+    let handle = UnsafeMutableRawPointer(bitPattern: -2)
     if let sym = dlsym(handle, "SDL_ShowCursor") {
         let showCursor = unsafeBitCast(sym, to: ShowCursorFn.self)
         // SDL_QUERY is -1
@@ -448,32 +558,60 @@ private func isMouseShown() -> Bool {
     return false
 }
 
+private func sendNativeMouseMotion(x: Int32, y: Int32) {
+    typealias GetFocusWindowFn = @convention(c) () -> UnsafeMutableRawPointer?
+    typealias SendMouseMotionFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, Int32, Int32, Int32) -> Int32
+    let handle = UnsafeMutableRawPointer(bitPattern: -2)
+    var window: UnsafeMutableRawPointer? = nil
+    if let getFocusSym = dlsym(handle, "SDL_GetFocusWindow") {
+        let getFocus = unsafeBitCast(getFocusSym, to: GetFocusWindowFn.self)
+        window = getFocus()
+    }
+    if let sym = dlsym(handle, "SDL_SendMouseMotion") {
+        let sendMotion = unsafeBitCast(sym, to: SendMouseMotionFn.self)
+        _ = sendMotion(window, 0, 1, x, y)
+    }
+}
+
+private func getNativeWindowSize(width: UnsafeMutablePointer<Int32>, height: UnsafeMutablePointer<Int32>) {
+    typealias GetFocusWindowFn = @convention(c) () -> UnsafeMutableRawPointer?
+    typealias GetWindowSizeFn = @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> Void
+    let handle = UnsafeMutableRawPointer(bitPattern: -2)
+
+    if let getFocusSym = dlsym(handle, "SDL_GetFocusWindow"),
+       let getSizeSym = dlsym(handle, "SDL_GetWindowSize") {
+        let getFocus = unsafeBitCast(getFocusSym, to: GetFocusWindowFn.self)
+        let getSize = unsafeBitCast(getSizeSym, to: GetWindowSizeFn.self)
+        if let window = getFocus() {
+            getSize(window, width, height)
+        }
+    }
+}
+
+private func getNativeMouseState(x: UnsafeMutablePointer<Int32>, y: UnsafeMutablePointer<Int32>) {
+    typealias GetMouseStateFn = @convention(c) (UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> UInt32
+    let handle = UnsafeMutableRawPointer(bitPattern: -2)
+    if let sym = dlsym(handle, "SDL_GetMouseState") {
+        let getMouseState = unsafeBitCast(sym, to: GetMouseStateFn.self)
+        _ = getMouseState(x, y)
+    }
+}
+
 private func sendNativeKey(scancode: Int32, state: Int32) {
     typealias SendKeyFn = @convention(c) (Int32, Int32) -> Void
-    guard let handle = dlopen(nil, RTLD_NOW) else {
-        print("Error: dlopen(nil) failed")
-        return
-    }
+    guard let handle = LogRedirector.shared.engineHandle else { return }
     if let sym = dlsym(handle, "SDL_SendVirtualKeyboardKey") {
         let sendKey = unsafeBitCast(sym, to: SendKeyFn.self)
         sendKey(state, scancode)
-    } else {
-        print("Error: Could not find symbol SDL_SendVirtualKeyboardKey")
     }
 }
 
 private func sendNativeMouseButton(button: UInt8, state: UInt8) {
     typealias SendMouseFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt8, UInt8) -> Int32
-    guard let handle = dlopen(nil, RTLD_NOW) else {
-        print("Error: dlopen(nil) failed")
-        return
-    }
+    guard let handle = LogRedirector.shared.engineHandle else { return }
     if let sym = dlsym(handle, "SDL_SendMouseButton") {
         let sendMouse = unsafeBitCast(sym, to: SendMouseFn.self)
-        // Pass nil for window; SDL will usually route this to the focus window internally
         _ = sendMouse(nil, 0, state, button)
-    } else {
-        print("Error: Could not find symbol SDL_SendMouseButton")
     }
 }
 

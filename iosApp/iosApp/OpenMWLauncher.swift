@@ -3,6 +3,7 @@ import ComposeApp
 
 class LogRedirector {
     static let shared = LogRedirector()
+    var engineHandle: UnsafeMutableRawPointer? = nil
     private var timer: Timer?
     private var lastOffset: UInt64 = 0
     private var logURL: URL {
@@ -302,6 +303,7 @@ enum OpenMWLauncher {
         guard let handle = dlopen(dylibPath, RTLD_NOW) else {
             throw LaunchError.dlopenFailed(String(cString: dlerror()))
         }
+        LogRedirector.shared.engineHandle = handle
         guard let sym = dlsym(handle, "main") else { throw LaunchError.mainMissing }
 
         typealias MainFn = @convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Int32
