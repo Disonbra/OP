@@ -1,3 +1,6 @@
+import java.io.File
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -94,3 +97,50 @@ dependencies {
     debugImplementation(compose.uiTooling)
 }
 
+// --- CMake iOS Libraries Integration ---
+abstract class CmakeBuildTask @Inject constructor(
+    private val execOperations: ExecOperations
+) : DefaultTask() {
+
+    @get:InputFile
+    abstract val cmakeListsFile: RegularFileProperty
+
+    @get:Internal
+    abstract val rootDirectory: DirectoryProperty
+
+    @TaskAction
+    fun build() {
+        val root = rootDirectory.get().asFile
+        val candidates = listOf("/opt/homebrew/bin/cmake", "/usr/local/bin/cmake", "cmake")
+        val cmakeBin = candidates.firstOrNull { File(it).exists() && File(it).canExecute() } ?: "cmake"
+
+        execOperations.exec {
+            workingDir = root
+            commandLine(cmakeBin, "-B", "$root/build", "-S", "$root", "-DIOS_PLATFORMS=SIMULATORARM64")
+        }
+
+        execOperations.exec {
+            workingDir = root
+            commandLine(cmakeBin, "--build", "$root/build")
+        }
+
+        execOperations.exec {
+            workingDir = root
+            commandLine(cmakeBin, "--build", "$root/build", "--target", "stage_libs")
+        }
+    }
+}
+
+val buildCmakeLibs = tasks.register("buildCmakeLibs", CmakeBuildTask::class.java) {
+    group = "build"
+    description = "Configures, builds, and stages CMake dependencies for OpenMW iOS"
+    cmakeListsFile.set(rootProject.file("CMakeLists.txt"))
+    rootDirectory.set(rootProject.rootDir)
+}
+
+tasks.matching { task ->
+    task.name.startsWith("link") && task.name.contains("Framework") ||
+    task.name.startsWith("embedAndSignAppleFramework")
+}.configureEach {
+    dependsOn(buildCmakeLibs)
+}

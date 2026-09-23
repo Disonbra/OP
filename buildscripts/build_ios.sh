@@ -31,7 +31,6 @@ COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
 
 LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
-BROTLI_VERSION=1.2.0
 FREETYPE2_VERSION=2.14.1
 OPENAL_VERSION=1.24.3
 BOOST_VERSION=1.88.0
@@ -42,17 +41,10 @@ BULLET_VERSION=3.25
 ZLIB_VERSION=1.3.2
 LIBXML2_VERSION=2.14.3
 MYGUI_VERSION=3.4.3
-GL4ES_VERSION=2d7949c0ad55e850f9aa9ed28f5e6ff6490984ee
 COLLADA_DOM_VERSION=2.5.0
 OSG_VERSION=495b370da37d9e3c739914a190f9821884619a4a
 LZ4_VERSION=1.10.0
-LUA_VERSION=5.1.5
-LUAJIT_VERSION=2.1.ROLLING
 OPENMW_VERSION=96565e9afb9bbebf77c1bbc108d5bf4f9bee2e6f
-RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
-VSG_VERSION=1.0.9
-VSGXCHANGE_VERSION=1.0.5
-VSGOPENMW_VERSION=0.2
 XZ_VERSION=5.8.2
 
 mkdir -p "${SRC_DIR}" "${PREFIX}" "${MARKERS_DIR}"
@@ -393,53 +385,6 @@ if skip_if_installed "gl4es"; then true; else
 
     build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
 fi
-
-# ------------------- NG-GL4ES -------------------
-#if skip_if_installed "ng-gl4es"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "ng-gl4es" ]; then
-#        echo "=== Downloading and building NG-GL4ES (OpenMW branch) ==="
-#        wget -c https://github.com/Duron27/NG-GL4ES/archive/refs/heads/iOS.zip -O iOS.zip
-#        unzip -q iOS.zip
-#        mv NG-GL4ES-iOS ng-gl4es
-#        rm -f iOS.zip
-#    fi
-    
-#    build_dual_platform "ng-gl4es" "${SRC_DIR}/ng-gl4es" \
-#        -DNOEGL=ON \
-#        -DNOX11=ON \
-#        -DSTATICLIB=OFF
-#fi
-
-# ------------------- GL4ES -------------------
-#if skip_if_installed "gl4es"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "gl4es" ]; then
-#        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
-#        git clone https://github.com/ptitSeb/gl4es.git gl4es
-#        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_ios.patch
-#    fi
-    
-#    build_dual_platform "gl4es" "${SRC_DIR}/gl4es" \
-#        -DNOEGL=ON \
-#        -DNOX11=ON \
-#        -DDEFAULT_ES=2 \
-#        -DSTATICLIB=OFF
-#fi
-
-# zink, moltenvk
-# Set Python environment variables
-# export PYTHONPATH="/Users/mac/Library/Python/3.9/lib/python/site-packages:$PYTHONPATH"
-# export PATH="/Users/mac/Library/Python/3.9/bin:$PATH"
-
-
-# brew install meson ninja pkg-config bison flex, pip3 install mako
-# pip3 install pyyaml
-# git clone https://github.com/KhronosGroup/MoltenVK.git
-# inside folder, ./fetchDependencies --ios
-# make ios
-
-# git clone https://gitlab.freedesktop.org/mesa/mesa.git
 
 # ------------------- libxml2 -------------------
 if skip_if_installed "libxml2"; then true; else
