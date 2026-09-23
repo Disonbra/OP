@@ -109,7 +109,11 @@ build_configure_platform_lib() {
     CFLAGS="${COMMON_FLAGS} -isysroot ${IOS_SDK_PATH} -arch ${ARCH} ${MIN_VERSION_FLAG}"
     CPPFLAGS="-isysroot ${IOS_SDK_PATH}"
     LDFLAGS="-isysroot ${IOS_SDK_PATH}"
-    
+
+    export PKG_CONFIG_LIBDIR="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_PATH="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR="${install_prefix}"
+
     # Run configure
     if [[ "${name}" == *"ffmpeg"* ]]; then
         # FFmpeg configure with its own flags; sysroot and arch flags must
@@ -213,6 +217,10 @@ build_platform_lib() {
     
     local build_dir="build_${name}_${platform}"
     local install_prefix="${PREFIX}/${platform}"
+
+    export PKG_CONFIG_LIBDIR="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_PATH="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR="${install_prefix}"
 
     local sdk_name="$([[ "${platform}" == "OS64" ]] && echo iphoneos || echo iphonesimulator)"
     local sdk_path=$(xcrun --sdk "${sdk_name}" --show-sdk-path)
@@ -611,7 +619,9 @@ if skip_if_installed "collada"; then true; else
         sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
         sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
     fi
-    
+
+    rm -rf "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/build_collada_"*
+
     build_dual_platform "collada" "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CXX_STANDARD=11 \
