@@ -620,7 +620,7 @@ if skip_if_installed "collada"; then true; else
         sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
     fi
 
-    rm -rf "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/build_collada_"*
+    #rm -rf "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/build_collada_"*
 
     build_dual_platform "collada" "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
         -DCMAKE_BUILD_TYPE=Release \
