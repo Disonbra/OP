@@ -31,6 +31,7 @@ COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
 
 LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
+BROTLI_VERSION=1.2.0
 FREETYPE2_VERSION=2.14.1
 OPENAL_VERSION=1.24.3
 BOOST_VERSION=1.88.0
@@ -42,9 +43,12 @@ ZLIB_VERSION=1.3.2
 LIBXML2_VERSION=2.14.3
 MYGUI_VERSION=3.4.3
 COLLADA_DOM_VERSION=2.5.0
-OSG_VERSION=495b370da37d9e3c739914a190f9821884619a4a
+OSG_VERSION=638f0a1e73687633fd99bf110d04226e78ff69c6
 LZ4_VERSION=1.10.0
-OPENMW_VERSION=96565e9afb9bbebf77c1bbc108d5bf4f9bee2e6f
+LUA_VERSION=5.1.5
+LUAJIT_VERSION=2.1.ROLLING
+OPENMW_VERSION=09243a3aa57f903ae69e541fc4d81617c8c4b15a
+RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
 XZ_VERSION=5.8.2
 
 mkdir -p "${SRC_DIR}" "${PREFIX}" "${MARKERS_DIR}"
@@ -105,7 +109,11 @@ build_configure_platform_lib() {
     CFLAGS="${COMMON_FLAGS} -isysroot ${IOS_SDK_PATH} -arch ${ARCH} ${MIN_VERSION_FLAG}"
     CPPFLAGS="-isysroot ${IOS_SDK_PATH}"
     LDFLAGS="-isysroot ${IOS_SDK_PATH}"
-    
+
+    export PKG_CONFIG_LIBDIR="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_PATH="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR="${install_prefix}"
+
     # Run configure
     if [[ "${name}" == *"ffmpeg"* ]]; then
         # FFmpeg configure with its own flags; sysroot and arch flags must
@@ -177,7 +185,7 @@ build_dual_platform() {
             device_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/OS64}")
         done
         
-        build_platform_lib "${name}" "OS64" "${src_dir}" "${extra_args[@]}"
+        build_platform_lib "${name}" "OS64" "${src_dir}" "${device_args[@]}"
         
         mark_as_installed "${name}_device"
     fi
@@ -193,7 +201,7 @@ build_dual_platform() {
             sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
         done
        
-        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${extra_args[@]}"
+        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${sim_args[@]}"
         
         mark_as_installed "${name}_sim"
     fi
@@ -209,7 +217,18 @@ build_platform_lib() {
     
     local build_dir="build_${name}_${platform}"
     local install_prefix="${PREFIX}/${platform}"
-    
+
+    export PKG_CONFIG_LIBDIR="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_PATH="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR="${install_prefix}"
+
+    local sdk_name="$([[ "${platform}" == "OS64" ]] && echo iphoneos || echo iphonesimulator)"
+    local sdk_path=$(xcrun --sdk "${sdk_name}" --show-sdk-path)
+
+    local gles_include="${sdk_path}/System/Library/Frameworks"
+    local gles_library="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
+    local gles_glx="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
+
     mkdir -p "${build_dir}" && cd "${build_dir}"
     
     cmake "${src_dir}" \
@@ -229,14 +248,13 @@ build_platform_lib() {
         -DCMAKE_INSTALL_PREFIX="${install_prefix}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_FIND_ROOT_PATH="${install_prefix}" \
-        -DDEFAULT_ES=2 -DNOX11=1 -DNOEGL=1 -DSTATICLIB=0 \
         -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
         -DCMAKE_CXX_FLAGS="-I${install_prefix}/include/ -I${install_prefix}/include/freetype2/ ${COMMON_FLAGS}" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DOPENGL_INCLUDE_DIR="${install_prefix}/include/gl4es/include/" \
+        -DOPENGL_INCLUDE_DIR="${gles_include}" \
         -DMyGUI_LIBRARY="${install_prefix}/lib/libMyGUIEngineStatic.a" \
-        -DOPENGL_gl_LIBRARY="${install_prefix}/lib/libGL.dylib" \
-        -DOPENGL_glx_LIBRARY="${install_prefix}/lib/libGL.dylib" \
+        -DOPENGL_gl_LIBRARY="${gles_library}" \
+        -DOPENGL_glx_LIBRARY="${gles_glx}" \
         -DOPENAL_INCLUDE_DIR="${install_prefix}/include/AL/" \
         -DBullet_INCLUDE_DIR="${install_prefix}/include/bullet/" \
         -DJPEG_INCLUDE_DIR="${install_prefix}/include/" \
@@ -250,22 +268,6 @@ build_platform_lib() {
     
     cmake --build . --config Release -j"${BUILD_JOBS}"
     cmake --install . --config Release
-    
-    # gl4es upstream has no CMake install rules: stage the dylib and the
-    # headers into the prefix ourselves. The dylib output path is shared
-    # between the device and simulator builds, so this must run right
-    # after each platform's build (or the second build overwrites the
-    # first's dylib).
-    if [[ "${name}" == *"gl4es"* ]]; then
-        echo "=== Installing gl4es into ${install_prefix} ==="
-        mkdir -p "${install_prefix}/lib" "${install_prefix}/include/gl4es"
-        cp "${src_dir}/lib/Release/libGL.dylib" "${install_prefix}/lib/libGL.dylib"
-        # Both header layouts are consumed: OSG/OpenMW are pointed at
-        # include/gl4es/include/ via OPENGL_INCLUDE_DIR, and other code
-        # includes <GL/gl.h> from the flat include dir.
-        cp -r "${src_dir}/include" "${install_prefix}/include/gl4es/"
-        cp -r "${src_dir}/include/"* "${install_prefix}/include/"
-    fi
     
     cd ..
 }
@@ -369,21 +371,6 @@ if skip_if_installed "freetype"; then true; else
     fi
     
     build_dual_platform "freetype" "${SRC_DIR}/freetype-${FREETYPE2_VERSION}"
-fi
-
-# ------------------- GL4ES_114 -------------------
-if skip_if_installed "gl4es"; then true; else
-    cd "${SRC_DIR}"
-    if [ ! -d "gl4es" ]; then
-        echo "=== Downloading and building GL4ES (OpenMW branch) ==="
-        git clone https://github.com/khanhduytran0/gl4es.git gl4es
-        # Pin to the commit gl4es_114.patch was written against; upstream
-        # master can drift and break the patch.
-        git -C ${SRC_DIR}/gl4es checkout e095812c2ff29971ca76c481035934fbac976ce0
-        patch -d ${SRC_DIR}/gl4es/ -p1 -t -N < ${PATCHES_DIR}/gl4es_114.patch
-    fi
-
-    build_dual_platform "gl4es" "${SRC_DIR}/gl4es"
 fi
 
 # ------------------- libxml2 -------------------
@@ -620,17 +607,6 @@ if skip_if_installed "vorbis"; then true; else
     build_dual_platform "vorbis" "${SRC_DIR}/libvorbis-1.3.7"
 fi
 
-# ------------------- uqm -------------------
-#if skip_if_installed "uqm"; then true; else
-#    cd "${SRC_DIR}"
-#    if [ ! -d "${SRC_DIR}/UQM-MegaMod" ]; then
-#        echo "=== Downloading and building uqm ==="
-#        git clone --branch ReAndroid --single-branch https://github.com/JHGuitarFreak/UQM-MegaMod.git
-#    fi
-
-#    build_dual_platform "uqm" "${SRC_DIR}/UQM-MegaMod"
-#fi
-
 # ------------------- COLLADA-DOM -------------------
 if skip_if_installed "collada"; then true; else
     cd "${SRC_DIR}"
@@ -643,7 +619,9 @@ if skip_if_installed "collada"; then true; else
         sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
         sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
     fi
-    
+
+    #rm -rf "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/build_collada_"*
+
     build_dual_platform "collada" "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CXX_STANDARD=11 \
@@ -651,50 +629,106 @@ if skip_if_installed "collada"; then true; else
         -DCMAKE_CXX_FLAGS="-DNO_BOOST -DNO_ZAE ${COMMON_FLAGS}"
 fi
 
+# ------------------- glslang -------------------
+if skip_if_installed "glslang"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "glslang" ]; then
+        echo "=== Cloning glslang ==="
+        git clone https://github.com/KhronosGroup/glslang.git
+    fi
+    cd "${SRC_DIR}/glslang"
+    sed -i \u0027\u0027 -e "s/3.22.1/3.19.6/g" CMakeLists.txt
+    sed -i \u0027\u0027 -e "s/CMAKE_CXX_STANDARD 23/CMAKE_CXX_STANDARD 17/g" CMakeLists.txt
+
+    for platform in "OS64" "SIMULATORARM64"; do
+        cd "${SRC_DIR}/glslang"
+        build_platform_lib "glslang" "$platform" "${SRC_DIR}/glslang" \
+            -DBUILD_EXTERNAL=OFF \
+            -DENABLE_OPT=OFF \
+            -DENABLE_PCH=OFF \
+            -DENABLE_GLSLANG_BINARIES=OFF
+
+        install_prefix="${PREFIX}/${platform}"
+        build_dir="${SRC_DIR}/glslang/build_glslang_${platform}"
+        sdk_suffix="$([[ "${platform}" == "OS64" ]] && echo "iphoneos" || echo "iphonesimulator")"
+
+        echo "=== Manually installing glslang for ${platform} ==="
+        mkdir -p "${install_prefix}/include/glslang"
+        mkdir -p "${install_prefix}/lib"
+
+        cp -r "${SRC_DIR}/glslang/glslang" "${install_prefix}/include/"
+        cp -r "${SRC_DIR}/glslang/SPIRV" "${install_prefix}/include/glslang/"
+
+        cp "${build_dir}/SPIRV/Release-${sdk_suffix}/libSPIRV.a" "${install_prefix}/lib/"
+        cp "${build_dir}/glslang/Release-${sdk_suffix}/libglslang.a" "${install_prefix}/lib/"
+        cp "${build_dir}/glslang/Release-${sdk_suffix}/libMachineIndependent.a" "${install_prefix}/lib/"
+        cp "${build_dir}/glslang/Release-${sdk_suffix}/libGenericCodeGen.a" "${install_prefix}/lib/"
+        cp "${build_dir}/glslang/OSDependent/Unix/Release-${sdk_suffix}/libOSDependent.a" "${install_prefix}/lib/"
+    done
+    mark_as_installed "glslang"
+fi
+
+# ------------------- spirv-cross -------------------
+if skip_if_installed "spirv-cross"; then true; else
+    cd "${SRC_DIR}"
+    if [ ! -d "SPIRV-Cross" ]; then
+        echo "=== Cloning SPIRV-Cross ==="
+        git clone https://github.com/KhronosGroup/SPIRV-Cross.git
+    fi
+    build_dual_platform "spirv-cross" "${SRC_DIR}/SPIRV-Cross" \
+        -DSPIRV_CROSS_CLI=OFF \
+        -DSPIRV_CROSS_ENABLE_CPP=OFF \
+        -DSPIRV_CROSS_ENABLE_HLSL=OFF \
+        -DSPIRV_CROSS_ENABLE_MSL=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+fi
+
 # ------------------- OpenSceneGraph -------------------
 if skip_if_installed "osg"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
-        wget -c https://github.com/Duron27/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
+        wget -c https://github.com/sisah2/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
         patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/osg_iOS.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/remove-lib-prefix-from-plugins.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/fix-freetype-include-dirs.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0001-Replace-Atomic-impl-with-std-atomic.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0002-BufferObject-make-numClients-atomic.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0004-IncrementalCompileOperation-wrap-some-stuff-in-atomi.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/force-add-plugins.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/dae_collada.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/enable-some-features.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OSGtextures.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/msaa+clean-log.patch
+        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0005-CullSettings-make-inheritanceMask-atomic-to-silence-.patch
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
-        -DOPENGL_PROFILE=GL1 \
+        -DOPENGL_PROFILE=GLES3 \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DOSG_BUILD_PLATFORM_IPHONE=ON \
         -DOSG_WINDOWING_SYSTEM=IOS \
         -DDYNAMIC_OPENTHREADS=OFF \
         -DDYNAMIC_OPENSCENEGRAPH=OFF \
         -DBUILD_OSG_PLUGIN_OSG=ON \
-        -DBUILD_OSG_PLUGIN_DAE=OFF \
+        -DBUILD_OSG_PLUGIN_DAE=ON \
         -DBUILD_OSG_PLUGIN_DDS=ON \
+        -DBUILD_OSG_PLUGIN_KTX=ON \
         -DBUILD_OSG_PLUGIN_TGA=ON \
         -DBUILD_OSG_PLUGIN_BMP=ON \
         -DBUILD_OSG_PLUGIN_JPEG=ON \
         -DBUILD_OSG_PLUGIN_PNG=ON \
-        -DBUILD_OSG_PLUGIN_KTX=ON \
         -DBUILD_OSG_PLUGIN_FREETYPE=ON \
         -DOSG_CPP_EXCEPTIONS_AVAILABLE=TRUE \
-        -DOSG_GL1_AVAILABLE=ON \
+        -DOSG_GL1_AVAILABLE=OFF \
         -DOSG_GL2_AVAILABLE=OFF \
         -DOSG_GL3_AVAILABLE=OFF \
         -DOSG_GLES1_AVAILABLE=OFF \
         -DOSG_GLES2_AVAILABLE=OFF \
-        -DOSG_GL_LIBRARY_STATIC=OFF \
-        -DOSG_GL_DISPLAYLISTS_AVAILABLE=OFF \
-        -DOSG_GL_MATRICES_AVAILABLE=ON \
-        -DOSG_GL_VERTEX_FUNCS_AVAILABLE=ON \
-        -DOSG_GL_VERTEX_ARRAY_FUNCS_AVAILABLE=ON \
-        -DOSG_GL_FIXED_FUNCTION_AVAILABLE=ON \
+        -DOSG_GLES3_AVAILABLE=ON \
         -DBUILD_OSG_APPLICATIONS=OFF \
         -DBUILD_OSG_PLUGINS_BY_DEFAULT=OFF \
-        -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF \
-        -DOSG_FIND_3RD_PARTY_DEPS=OFF \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_STANDARD=11 \
-        -DCMAKE_CXX_STANDARD_REQUIRED=ON
+        -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF
 fi
 
 # ------------------- OpenMW -------------------
@@ -702,8 +736,18 @@ if skip_if_installed "openmw"; then true; else
     cd "${SRC_DIR}"
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
-        wget -c https://github.com/OpenMW/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
+        wget -c https://github.com/sisah2/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
         patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0009-windowmanagerimp-always-show-mouse-when-possible-pat.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/ktx.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/base-changes.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/allow-more-es-versions.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/GLES-3-OMW.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/textures.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/features.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/misc.patch
+        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/iosGLESomw.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \

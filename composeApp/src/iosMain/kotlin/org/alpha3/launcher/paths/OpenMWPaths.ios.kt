@@ -6,12 +6,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.memScoped
 import platform.Foundation.*
 
-fun listFilesInDirectory(path: String): List<String> {
-    val fileManager = NSFileManager.defaultManager
-    val contents = fileManager.contentsOfDirectoryAtPath(path, null) ?: return emptyList()
-    return contents.map { it.toString() }
-}
-
 private fun documentsDir(): String =
     NSSearchPathForDirectoriesInDomains(
         NSDocumentDirectory,
@@ -29,6 +23,13 @@ private fun appSupportDir(): String =
 private fun cachesDir(): String =
     NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory,
+        NSUserDomainMask,
+        true
+    ).first() as String
+
+private fun libraryDir(): String =
+    NSSearchPathForDirectoriesInDomains(
+        NSLibraryDirectory,
         NSUserDomainMask,
         true
     ).first() as String
@@ -61,7 +62,7 @@ actual object OpenMWPaths {
         get() = documentsDir() // or same as USER_FILE_STORAGE if you prefer
 
     actual val USER_CONFIG: String by lazy {
-        val p = "$USER_FILE_STORAGE/config"
+        val p = "${libraryDir()}/Preferences/openmw"
         ensureDir(p)
         p
     }
@@ -121,6 +122,39 @@ actual object OpenMWPaths {
         val p = "${cachesDir()}/Alpha3/OpenMW/CACHE"
         ensureDir(p)
         p
+    }
+
+    actual val LIBRARY_ROOT: String
+        get() = libraryDir()
+
+    actual fun setupResources() {
+        val fm = NSFileManager.defaultManager
+        val bundlePath = "${NSBundle.mainBundle.resourcePath}/OpenMWAssets/resources"
+        val destPath = USER_RESOURCES
+
+        if (!fm.fileExistsAtPath(bundlePath)) {
+            println("Bundle resources not found at $bundlePath")
+            return
+        }
+
+        val shadersDest = "$destPath/shaders"
+        if (!fm.fileExistsAtPath(shadersDest)) {
+            println("Copying resources from bundle to $destPath...")
+            
+            // If destPath exists, remove it so we can copy the whole folder
+            if (fm.fileExistsAtPath(destPath)) {
+                fm.removeItemAtPath(destPath, null)
+            }
+
+            val result = fm.copyItemAtPath(bundlePath, destPath, null)
+            if (!result) {
+                println("Failed to copy resources (check paths or permissions)")
+            } else {
+                println("Resources copied successfully.")
+            }
+        } else {
+            println("Resources already present in $destPath")
+        }
     }
 }
 

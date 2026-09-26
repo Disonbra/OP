@@ -1,3 +1,17 @@
+diff --git a/include/SDL_opengles2_gl2ext.h b/include/SDL_opengles2_gl2ext.h
+index 9448ce09f..16f78995b 100644
+--- a/include/SDL_opengles2_gl2ext.h
++++ b/include/SDL_opengles2_gl2ext.h
+@@ -1,6 +1,8 @@
+ #ifndef __gles2_gl2ext_h_
+ #define __gles2_gl2ext_h_ 1
+
++#include "SDL_opengles2_khrplatform.h"
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+
 --- a/src/video/uikit/SDL_uikitwindow.m	2026-08-09 22:11:35
 +++ b/src/video/uikit/SDL_uikitwindow.m	2026-08-09 22:11:35
 @@ -208,6 +208,24 @@

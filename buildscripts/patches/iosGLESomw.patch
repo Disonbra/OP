@@ -1,0 +1,166 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 98c19c2..0c58fe8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -19,7 +19,7 @@ if(OPENMW_GL4ES_MANUAL_INIT)
+     add_compile_definitions(OPENMW_GL4ES_MANUAL_INIT)
+ endif()
+ 
+-if (APPLE OR WIN32)
++if ((APPLE AND NOT IOS) OR WIN32)
+     set(DEPLOY_QT_TRANSLATIONS_DEFAULT ON)
+ else ()
+     set(DEPLOY_QT_TRANSLATIONS_DEFAULT OFF)
+@@ -273,10 +273,10 @@ endif()
+ 
+ find_package(LZ4 REQUIRED)
+ 
+-if (ANDROID)
+-    find_package(glslang REQUIRED)
+-    find_package(SPIRV-Cross REQUIRED)
+-endif()
++
++find_package(glslang REQUIRED)
++find_package(SPIRV-Cross REQUIRED)
++
+ 
+ if (USE_QT)
+     find_package(QT REQUIRED COMPONENTS Core NAMES Qt6)
+diff --git a/apps/openmw/CMakeLists.txt b/apps/openmw/CMakeLists.txt
+index 2eb9470..c67de15 100644
+--- a/apps/openmw/CMakeLists.txt
++++ b/apps/openmw/CMakeLists.txt
+@@ -116,9 +116,6 @@ add_openmw_dir (mwbase
+     inputmanager windowmanager statemanager luamanager
+     )
+ 
+-add_openmw_dir (.
+-    ../navmeshtool/main ../navmeshtool/navmesh ../navmeshtool/worldspacedata
+-    )
+ 
+ # Main executable
+ 
+@@ -215,11 +212,6 @@ if (MSVC AND PRECOMPILE_HEADERS_WITH_MSVC)
+     )
+ endif()
+ 
+-if (ANDROID)
+-    target_link_libraries(
+-            openmw-lib EGL android log z glslang::glslang glslang::SPIRV spirv-cross-c
+-    )
+-endif (ANDROID)
+ 
+ if (USE_SYSTEM_TINYXML)
+     target_link_libraries(openmw-lib ${TinyXML_LIBRARIES})
+@@ -235,15 +227,20 @@ if (UNIX AND NOT APPLE)
+ endif()
+ 
+ if(APPLE AND BUILD_OPENMW)
+-    if(CMAKE_OSX_SYSROOT MATCHES "iphoneos" OR CMAKE_SYSTEM_NAME MATCHES "iOS" OR IOS)
+-        # iOS specific setup
+-        set(OPENMW_RESOURCES_ROOT "${CMAKE_CURRENT_BINARY_DIR}/Resources")
+-        
+-#        set_target_properties(openmw PROPERTIES
+-#            MACOSX_BUNDLE TRUE
+-#            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
+-#            RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets"
+-#        )
++    if(IOS)
++        set(BUNDLE_RESOURCES_DIR "${APP_BUNDLE_DIR}/Contents/Resources")
++
++        set(OPENMW_RESOURCES_ROOT ${BUNDLE_RESOURCES_DIR})
++
++        add_subdirectory(../../files/ ${CMAKE_CURRENT_BINARY_DIR}/files)
++
++        configure_file("${OpenMW_BINARY_DIR}/Release/defaults.bin" ${BUNDLE_RESOURCES_DIR} COPYONLY)
++        configure_file("${OpenMW_BINARY_DIR}/openmw.cfg" ${BUNDLE_RESOURCES_DIR} COPYONLY)
++        configure_file("${OpenMW_BINARY_DIR}/Release/gamecontrollerdb.txt" ${BUNDLE_RESOURCES_DIR} COPYONLY)
++
++        add_custom_command(TARGET openmw
++                POST_BUILD
++                COMMAND cp "${OpenMW_BINARY_DIR}/Release/resources/version" "${BUNDLE_RESOURCES_DIR}/resources")
+         
+         find_library(UIKIT_FRAMEWORK UIKit)
+         find_library(FOUNDATION_FRAMEWORK Foundation)
+@@ -255,6 +252,9 @@ if(APPLE AND BUILD_OPENMW)
+             ${FOUNDATION_FRAMEWORK}
+             ${COREGRAPHICS_FRAMEWORK}
+             ${QUARTZCORE_FRAMEWORK}
++            glslang::glslang
++            glslang::SPIRV
++            spirv-cross-c
+         )
+         
+         if (FFmpeg_FOUND)
+diff --git a/components/fx/pass.cpp b/components/fx/pass.cpp
+index 6aa0150..b7c9806 100644
+--- a/components/fx/pass.cpp
++++ b/components/fx/pass.cpp
+@@ -362,7 +362,7 @@ float omw_EstimateFogCoverageFromUV(vec2 uv)
+         if (mCompiled)
+             return;
+ 
+-        mLegacyGLSL = technique.getGLSLVersion() < 330;
++        mLegacyGLSL = technique.getGLSLVersion() < 300;
+ 
+         if (mType == Type::Pixel)
+         {
+@@ -376,8 +376,8 @@ float omw_EstimateFogCoverageFromUV(vec2 uv)
+             //OSG_NOTICE <<"Vertex shader "<<mName<<" before conversion"<<std::endl<<vertexSource<<std::endl<<std::endl;
+             //OSG_NOTICE <<"Fragment shader "<<mName<<" before conversion"<<std::endl<<fragmentSource<<std::endl<<std::endl;
+ 
+-            vertexSource = Shader::ShaderConverter::convertGLSLtoGLES(vertexSource, osg::Shader::VERTEX, 320);
+-            fragmentSource = Shader::ShaderConverter::convertGLSLtoGLES(fragmentSource, osg::Shader::FRAGMENT, 320);
++            vertexSource = Shader::ShaderConverter::convertGLSLtoGLES(vertexSource, osg::Shader::VERTEX, 300);
++            fragmentSource = Shader::ShaderConverter::convertGLSLtoGLES(fragmentSource, osg::Shader::FRAGMENT, 300);
+ 
+             //OSG_NOTICE <<"Vertex shader "<<mName<<" after conversion"<<std::endl<<vertexSource<<std::endl<<std::endl;
+             //OSG_NOTICE <<"Fragment shader "<<mName<<" after conversion"<<std::endl<<fragmentSource<<std::endl<<std::endl;
+diff --git a/components/fx/technique.cpp b/components/fx/technique.cpp
+index 5a9f532..8ad3f2c 100644
+--- a/components/fx/technique.cpp
++++ b/components/fx/technique.cpp
+@@ -84,7 +84,7 @@ namespace Fx
+         mDescription = {};
+         mVersion = {};
+         mGLSLExtensions.clear();
+-        mGLSLVersion = 330;//(mUBO || Stereo::getMultiview()) ? 330 : 120;
++        mGLSLVersion = 300;//(mUBO || Stereo::getMultiview()) ? 330 : 120;
+         mGLSLProfile.clear();
+         mDynamic = false;
+     }
+@@ -245,7 +245,7 @@ namespace Fx
+             else if (key == "glsl_version")
+             {
+                 mGLSLVersion = std::max(mGLSLVersion, parseInteger());
+-                mGLSLVersion = 330;
++                mGLSLVersion = 300;
+             }
+             else if (key == "flags")
+                 mFlags = parseFlags();
+diff --git a/components/sdlutil/sdlgraphicswindow.cpp b/components/sdlutil/sdlgraphicswindow.cpp
+index fbedcf0..309559e 100644
+--- a/components/sdlutil/sdlgraphicswindow.cpp
++++ b/components/sdlutil/sdlgraphicswindow.cpp
+@@ -107,17 +107,12 @@ namespace SDLUtil
+         SDL_Window* oldWin = SDL_GL_GetCurrentWindow();
+         SDL_GLContext oldCtx = SDL_GL_GetCurrentContext();
+ 
+-#if defined(ANDROID) || defined(OPENMW_GL4ES_MANUAL_INIT)
+-        int major = 1;
+-        int minor = 1;
++#if defined(ANDROID) || defined(OPENMW_GL4ES_MANUAL_INIT) || defined(__APPLE__)
++        int major = 2;
++        int minor = 0;
+         char* ver = getenv("OPENMW_GLES_VERSION");
+ 
+-        if (ver && strcmp(ver, "20") == 0)
+-        {
+-            major = 2;
+-            minor = 0;
+-        }
+-        else if (ver && strcmp(ver, "30") == 0)
++        if (ver && (strcmp(ver, "30") == 0 || strcmp(ver, "3") == 0))
+         {
+             major = 3;
+             minor = 0;

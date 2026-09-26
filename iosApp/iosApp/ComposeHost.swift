@@ -1,50 +1,654 @@
 import SwiftUI
 import UIKit
+import Foundation
 import ComposeApp
 
-/// Hosts the Compose Multiplatform launcher (composeApp/) and hands it the
-/// native engine-start action — the iOS equivalent of the Android
-/// launcher's System.loadLibrary glue.
+/// A custom window that only intercepts touches that hit its subviews.
+class PassThroughWindow: UIWindow {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hitView = super.hitTest(point, with: event)
+        if rootViewController?.presentedViewController != nil { return hitView }
+        if hitView == self || hitView == rootViewController?.view {
+            if let root = rootViewController {
+                if root.view.viewWithTag(999) != nil || 
+                   root.view.viewWithTag(888) != nil || 
+                   root.view.viewWithTag(777) != nil { 
+                    return hitView 
+                }
+            }
+            return nil
+        }
+        return hitView
+    }
+}
+
 struct ComposeLauncherView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        MainViewControllerKt.MainViewController(onPlay: startEngine)
+        LogRedirector.shared.start()
+        print("Launcher: Log redirection started")
+        let controller = MainViewControllerKt.MainViewController(
+            onPlay: startEngine,
+            onResetSettings: { OpenMWLauncher.resetSettingsToDefault() }
+        )
+        return LauncherRootViewController(content: controller)
     }
-
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
 struct ContentView: View {
     var body: some View {
-        ComposeLauncherView()
-            .ignoresSafeArea()
+        ComposeLauncherView().ignoresSafeArea()
     }
 }
 
+class LauncherRootViewController: UIViewController {
+    static var shared: LauncherRootViewController?
+    var content: UIViewController
+    var allowLandscape = false
+
+    init(content: UIViewController) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+        LauncherRootViewController.shared = self
+        addChild(content)
+        view.addSubview(content.view)
+        content.didMove(toParent: self)
+        view.backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        content.view.frame = view.bounds
+    }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return allowLandscape ? .landscape : .portrait
+    }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        return allowLandscape ? .landscapeRight : .portrait
+    }
+    func switchToLandscape() {
+        allowLandscape = true
+        if #available(iOS 16.0, *) {
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+            if let windowScene = view.window?.windowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+    }
+}
+
+class VirtualThumbstick: UIView {
+    private let baseView = UIView()
+    private let stickView = UIView()
+    private let radius: CGFloat = 60
+    private var activeKeys = Set<Int32>()
+    var isLocked = true
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func setup() {
+        backgroundColor = .clear
+        baseView.frame = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+        baseView.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        baseView.layer.cornerRadius = radius
+        baseView.layer.borderWidth = 2
+        baseView.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        addSubview(baseView)
+        
+        stickView.frame = CGRect(x: 0, y: 0, width: 50, height: 50)
+        stickView.center = CGPoint(x: radius, y: radius)
+        stickView.backgroundColor = UIColor.white.withAlphaComponent(0.6)
+        stickView.layer.cornerRadius = 25
+        stickView.isUserInteractionEnabled = false
+        addSubview(stickView)
+        
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(longPress)
+    }
+    
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if isLocked { return }
+        guard let superview = superview else { return }
+        if gesture.state == .began {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.alpha = 0.8
+            }
+        } else if gesture.state == .changed {
+            self.center = gesture.location(in: superview)
+        } else if gesture.state == .ended || gesture.state == .cancelled {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = .identity
+                self.alpha = 1.0
+            }
+            UserDefaults.standard.set(NSCoder.string(for: self.center), forKey: "OverlayThumbstickCenter_v7")
+        }
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: self)
+        let centerX = radius
+        let centerY = radius
+        let dx = location.x - centerX
+        let dy = location.y - centerY
+        let distance = sqrt(dx*dx + dy*dy)
+        let angle = atan2(dy, dx)
+        let cappedDistance = min(distance, radius)
+        stickView.center = CGPoint(x: centerX + cos(angle) * cappedDistance, y: centerY + sin(angle) * cappedDistance)
+        updateWASD(dx: dx, dy: dy, distance: cappedDistance)
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        stickView.center = CGPoint(x: radius, y: radius)
+        resetKeys()
+    }
+    
+    private func updateWASD(dx: CGFloat, dy: CGFloat, distance: CGFloat) {
+        let deadzone: CGFloat = 15
+        var currentKeys = Set<Int32>()
+        if distance > deadzone {
+            if dy < -deadzone { currentKeys.insert(26) } // W
+            if dy > deadzone  { currentKeys.insert(22) } // S
+            if dx < -deadzone { currentKeys.insert(4)  } // A
+            if dx > deadzone  { currentKeys.insert(7)  } // D
+        }
+        for key in activeKeys where !currentKeys.contains(key) { sendNativeKey(scancode: key, state: 0) }
+        for key in currentKeys where !activeKeys.contains(key) { sendNativeKey(scancode: key, state: 1) }
+        activeKeys = currentKeys
+    }
+    
+    private func resetKeys() {
+        for key in activeKeys { sendNativeKey(scancode: key, state: 0) }
+        activeKeys.removeAll()
+    }
+}
+
+class VirtualRightThumbstick: UIView {
+    private let baseView = UIView()
+    private let stickView = UIView()
+    private let radius: CGFloat = 60
+    var isLocked = true
+    private var currentDx: CGFloat = 0
+    private var currentDy: CGFloat = 0
+    private var displayLink: CADisplayLink?
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func setup() {
+        backgroundColor = .clear
+        baseView.frame = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+        baseView.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        baseView.layer.cornerRadius = radius
+        baseView.layer.borderWidth = 2
+        baseView.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        addSubview(baseView)
+        
+        stickView.frame = CGRect(x: 0, y: 0, width: 50, height: 50)
+        stickView.center = CGPoint(x: radius, y: radius)
+        stickView.backgroundColor = UIColor.white.withAlphaComponent(0.6)
+        stickView.layer.cornerRadius = 25
+        stickView.isUserInteractionEnabled = false
+        addSubview(stickView)
+        
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(longPress)
+        
+        displayLink = CADisplayLink(target: self, selector: #selector(updateMouseMotion))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+    
+    deinit {
+        displayLink?.invalidate()
+    }
+    
+    @objc private func updateMouseMotion() {
+        let deadzone: CGFloat = 5
+        let distance = sqrt(currentDx * currentDx + currentDy * currentDy)
+        if distance > deadzone {
+            let sensitivity: CGFloat = 0.25
+            let moveX = Int32(round(currentDx * sensitivity))
+            let moveY = Int32(round(currentDy * sensitivity))
+            if moveX != 0 || moveY != 0 {
+                sendNativeMouseMotion(dx: moveX, dy: moveY)
+            }
+        }
+    }
+    
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if isLocked { return }
+        guard let superview = superview else { return }
+        if gesture.state == .began {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.alpha = 0.8
+            }
+        } else if gesture.state == .changed {
+            self.center = gesture.location(in: superview)
+        } else if gesture.state == .ended || gesture.state == .cancelled {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = .identity
+                self.alpha = 1.0
+            }
+            UserDefaults.standard.set(NSCoder.string(for: self.center), forKey: "OverlayRightThumbstickCenter_v7")
+        }
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        processTouch(touches.first)
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        processTouch(touches.first)
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        resetStick()
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        resetStick()
+    }
+    
+    private func processTouch(_ touch: UITouch?) {
+        guard let touch = touch else { return }
+        let location = touch.location(in: self)
+        let centerX = radius
+        let centerY = radius
+        let dx = location.x - centerX
+        let dy = location.y - centerY
+        let distance = sqrt(dx*dx + dy*dy)
+        let angle = atan2(dy, dx)
+        let cappedDistance = min(distance, radius)
+        stickView.center = CGPoint(x: centerX + cos(angle) * cappedDistance, y: centerY + sin(angle) * cappedDistance)
+        
+        currentDx = cos(angle) * cappedDistance
+        currentDy = sin(angle) * cappedDistance
+    }
+    
+    private func resetStick() {
+        stickView.center = CGPoint(x: radius, y: radius)
+        currentDx = 0
+        currentDy = 0
+    }
+}
+
+class GameplayOverlayController: UIViewController {
+    var thumbstick: VirtualThumbstick!
+    var rightThumbstick: VirtualRightThumbstick!
+    var customButtons: [UIButton] = []
+    var isEditMode = false
+    let toolbar = UIView()
+    let lockBtn = UIButton(type: .system)
+    let logsBtn = UIButton(type: .system)
+    let addBtn = UIButton(type: .system)
+    let mouseIndicator = UIView()
+    let mouseCursorImageView = UIImageView()
+    private var displayLink: CADisplayLink?
+    private var layoutDone = false
+
+    let availableButtons: [(name: String, code: Int32)] = [
+        ("LCLICK", 1), ("RCLICK", 3), ("ESC", 41), ("ENT", 40), ("TAB", 43), ("SPC", 44),
+        ("JUMP", 8), ("JOURN", 13), ("WAIT", 23), ("MAP", 16),
+        ("WEAP", 9), ("MAG", 21), ("RUN", 225), ("SNK", 224),
+        ("QSAVE", 62), ("QLOAD", 66), ("INV", 12),
+        ("F1", 58), ("F2", 59), ("F3", 60), ("F4", 61), ("F5", 62), ("F6", 63),
+        ("F7", 64), ("F8", 65), ("F9", 66), ("F10", 67), ("F11", 68), ("F12", 69),
+        ("1", 30), ("2", 31), ("3", 32), ("4", 33)
+    ]
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        thumbstick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
+        view.addSubview(thumbstick)
+        
+        rightThumbstick = VirtualRightThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
+        view.addSubview(rightThumbstick)
+        
+        // Toolbar container for easy grouping
+        toolbar.frame = CGRect(x: 24, y: 24, width: 180, height: 44)
+        toolbar.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        toolbar.layer.cornerRadius = 22
+        view.addSubview(toolbar)
+        
+        addBtn.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        addBtn.tintColor = .white
+        addBtn.frame = CGRect(x: 2, y: 2, width: 40, height: 40)
+        addBtn.addTarget(self, action: #selector(showAddButtonPanel), for: .touchUpInside)
+        toolbar.addSubview(addBtn)
+        
+        lockBtn.setImage(UIImage(systemName: "lock.fill"), for: .normal)
+        lockBtn.tintColor = .white
+        lockBtn.frame = CGRect(x: 44, y: 2, width: 40, height: 40)
+        lockBtn.addTarget(self, action: #selector(toggleEditMode), for: .touchUpInside)
+        toolbar.addSubview(lockBtn)
+        
+        logsBtn.setImage(UIImage(systemName: "terminal.fill"), for: .normal)
+        logsBtn.tintColor = .white
+        logsBtn.frame = CGRect(x: 86, y: 2, width: 40, height: 40)
+        logsBtn.addTarget(self, action: #selector(toggleLogs), for: .touchUpInside)
+        toolbar.addSubview(logsBtn)
+        
+        mouseIndicator.frame = CGRect(x: 136, y: 17, width: 10, height: 10)
+        mouseIndicator.layer.cornerRadius = 5
+        mouseIndicator.backgroundColor = .systemRed
+        toolbar.addSubview(mouseIndicator)
+        
+        mouseCursorImageView.contentMode = .scaleAspectFit
+        if let path = Bundle.main.path(forResource: "pointer_arrow", ofType: "png", inDirectory: "OpenMWAssets") ?? Bundle.main.path(forResource: "pointer_arrow", ofType: "png") {
+            mouseCursorImageView.image = UIImage(contentsOfFile: path)
+        } else {
+            mouseCursorImageView.image = UIImage(named: "pointer_arrow")
+        }
+        mouseCursorImageView.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+        mouseCursorImageView.isHidden = true
+        mouseCursorImageView.isUserInteractionEnabled = false
+        view.addSubview(mouseCursorImageView)
+        
+        setupDisplayLink()
+        loadAllCustomButtons()
+    }
+
+    private func setupDisplayLink() {
+        displayLink = CADisplayLink(target: self, selector: #selector(updateMouseStatus))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    @objc private func updateMouseStatus() {
+        let isShown = isMouseShown()
+        mouseIndicator.backgroundColor = isShown ? .systemGreen : .systemRed
+        
+        if isShown {
+            let pos = getMousePosition()
+            mouseCursorImageView.isHidden = false
+            let rawSize = mouseCursorImageView.image?.size ?? CGSize(width: 24, height: 24)
+            let scale: CGFloat = 0.75
+            let width = rawSize.width * scale
+            let height = rawSize.height * scale
+            mouseCursorImageView.frame = CGRect(x: pos.x, y: pos.y, width: width, height: height)
+            view.bringSubviewToFront(mouseCursorImageView)
+        } else {
+            mouseCursorImageView.isHidden = true
+        }
+    }
+    
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    @objc func toggleEditMode() {
+        isEditMode.toggle()
+        lockBtn.setImage(UIImage(systemName: isEditMode ? "lock.open.fill" : "lock.fill"), for: .normal)
+        lockBtn.tintColor = isEditMode ? .systemYellow : .white
+        thumbstick.isLocked = !isEditMode
+        rightThumbstick.isLocked = !isEditMode
+        for btn in customButtons {
+            if let recognizers = btn.gestureRecognizers {
+                for r in recognizers { r.isEnabled = isEditMode }
+            }
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let screen = view.bounds
+        guard screen.width > screen.height else { return }
+        if !layoutDone && screen.width > 200 {
+            layoutDone = true
+            if let saved = UserDefaults.standard.string(forKey: "OverlayThumbstickCenter_v7") {
+                thumbstick.center = NSCoder.cgPoint(for: saved)
+            } else {
+                thumbstick.center = CGPoint(x: 80, y: screen.height - 80)
+            }
+            if let savedRight = UserDefaults.standard.string(forKey: "OverlayRightThumbstickCenter_v7") {
+                rightThumbstick.center = NSCoder.cgPoint(for: savedRight)
+            } else {
+                rightThumbstick.center = CGPoint(x: screen.width - 80, y: screen.height - 80)
+            }
+            if customButtons.isEmpty && UserDefaults.standard.array(forKey: "CustomButtonsList_v7") == nil {
+                createAndAddButton(name: "LCLICK", scancode: 1, at: CGPoint(x: screen.width - 150, y: screen.height - 180))
+                createAndAddButton(name: "RCLICK", scancode: 3, at: CGPoint(x: screen.width - 70, y: screen.height - 180))
+                createAndAddButton(name: "ESC", scancode: 41, at: CGPoint(x: screen.width - 120, y: screen.height - 230))
+                createAndAddButton(name: "ENT", scancode: 40, at: CGPoint(x: screen.width - 50, y: screen.height - 230))
+            }
+        }
+    }
+    
+    @objc func showAddButtonPanel() {
+        if view.viewWithTag(999) != nil { return }
+        let panelW: CGFloat = 400
+        let panelH: CGFloat = 250
+        let panel = UIView(frame: CGRect(x: 0, y: 0, width: panelW, height: panelH))
+        panel.center = view.center
+        panel.backgroundColor = UIColor(white: 0.1, alpha: 0.98)
+        panel.layer.cornerRadius = 16; panel.layer.borderWidth = 1; panel.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor; panel.tag = 999
+        let titleLabel = UILabel(frame: CGRect(x: 0, y: 12, width: panelW, height: 24))
+        titleLabel.text = "Tap to Add Button"; titleLabel.textAlignment = .center; titleLabel.textColor = .white; titleLabel.font = .boldSystemFont(ofSize: 18)
+        panel.addSubview(titleLabel)
+        let scroll = UIScrollView(frame: CGRect(x: 15, y: 45, width: panelW - 30, height: panelH - 100))
+        panel.addSubview(scroll)
+        let btnW: CGFloat = 85; let btnH: CGFloat = 40; let gap: CGFloat = 8; let cols = 4
+        for (i, data) in availableButtons.enumerated() {
+            let row = i / cols; let col = i % cols
+            let b = UIButton(type: .system)
+            b.frame = CGRect(x: CGFloat(col) * (btnW + gap), y: CGFloat(row) * (btnH + gap), width: btnW, height: btnH)
+            b.setTitle(data.name, for: .normal); b.setTitleColor(.white, for: .normal); b.backgroundColor = UIColor.white.withAlphaComponent(0.1); b.layer.cornerRadius = 8; b.tag = Int(data.code)
+            b.addTarget(self, action: #selector(buttonSelectedFromGrid(_:)), for: .touchUpInside)
+            scroll.addSubview(b); scroll.contentSize = CGSize(width: scroll.frame.width, height: b.frame.maxY + gap)
+        }
+        let cancelBtn = UIButton(type: .system); cancelBtn.frame = CGRect(x: panelW/2 - 50, y: panelH - 45, width: 100, height: 35); cancelBtn.setTitle("Cancel", for: .normal); cancelBtn.setTitleColor(.white, for: .normal); cancelBtn.backgroundColor = .systemRed.withAlphaComponent(0.6); cancelBtn.layer.cornerRadius = 8
+        cancelBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside); panel.addSubview(cancelBtn)
+        view.addSubview(panel)
+    }
+    
+    @objc func buttonSelectedFromGrid(_ sender: UIButton) {
+        guard let name = sender.title(for: .normal) else { return }
+        createAndAddButton(name: name, scancode: Int32(sender.tag), at: view.center)
+        saveAllCustomButtons(); hideConfigPanels()
+    }
+    
+    @objc func hideConfigPanels() {
+        view.viewWithTag(999)?.removeFromSuperview()
+        view.viewWithTag(888)?.removeFromSuperview()
+        view.viewWithTag(777)?.removeFromSuperview()
+    }
+
+    @objc func toggleLogs() {
+        if let existing = view.viewWithTag(777) {
+            existing.removeFromSuperview()
+            return
+        }
+        
+        hideConfigPanels()
+        
+        let logView = LogOverlayView(isPresented: .init(get: { true }, set: { _ in self.hideConfigPanels() }))
+        let hostingController = UIHostingController(rootView: logView)
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.tag = 777
+        
+        let width: CGFloat = min(view.bounds.width - 100, 600)
+        let height: CGFloat = min(view.bounds.height - 100, 400)
+        hostingController.view.frame = CGRect(x: (view.bounds.width - width)/2,
+                                            y: (view.bounds.height - height)/2,
+                                            width: width,
+                                            height: height)
+        
+        addChild(hostingController)
+        view.addSubview(hostingController.view)
+        hostingController.didMove(toParent: self)
+    }
+    
+    private func createAndAddButton(name: String, scancode: Int32, at position: CGPoint) {
+        let btn = UIButton(type: .system)
+        btn.frame = CGRect(x: 0, y: 0, width: 70, height: 50); btn.center = position; btn.setTitle(name, for: .normal); btn.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold); btn.setTitleColor(.white, for: .normal); btn.backgroundColor = UIColor.black.withAlphaComponent(0.5); btn.layer.cornerRadius = 10; btn.tag = Int(scancode)
+        btn.addTarget(self, action: #selector(customButtonDown(_:)), for: .touchDown)
+        btn.addTarget(self, action: #selector(customButtonUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleButtonPan(_:))); pan.isEnabled = isEditMode; btn.addGestureRecognizer(pan)
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleButtonLongPress(_:))); longPress.isEnabled = isEditMode; btn.addGestureRecognizer(longPress)
+        view.addSubview(btn); customButtons.append(btn)
+    }
+
+    @objc func customButtonDown(_ sender: UIButton) {
+        if isEditMode { return }
+        let name = sender.title(for: .normal) ?? ""
+        if name == "LCLICK" || name == "RCLICK" {
+            sendNativeMouseButton(button: UInt8(sender.tag), state: 1)
+        } else {
+            sendNativeKey(scancode: Int32(sender.tag), state: 1)
+        }
+    }
+    @objc func customButtonUp(_ sender: UIButton) {
+        if isEditMode { return }
+        let name = sender.title(for: .normal) ?? ""
+        if name == "LCLICK" || name == "RCLICK" {
+            sendNativeMouseButton(button: UInt8(sender.tag), state: 0)
+        } else {
+            sendNativeKey(scancode: Int32(sender.tag), state: 0)
+        }
+    }
+    
+    @objc func handleButtonPan(_ gesture: UIPanGestureRecognizer) {
+        if !isEditMode { return }
+        guard let btn = gesture.view else { return }
+        let translation = gesture.translation(in: view)
+        btn.center = CGPoint(x: btn.center.x + translation.x, y: btn.center.y + translation.y)
+        gesture.setTranslation(.zero, in: view)
+        if gesture.state == .ended { saveAllCustomButtons() }
+    }
+
+    @objc func handleButtonLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if !isEditMode || gesture.state != .began { return }
+        guard let btn = gesture.view as? UIButton else { return }
+        let panel = UIView(frame: CGRect(x: 0, y: 0, width: 240, height: 120))
+        panel.center = view.center; panel.backgroundColor = UIColor(white: 0.1, alpha: 0.98); panel.layer.cornerRadius = 16; panel.layer.borderWidth = 1; panel.layer.borderColor = UIColor.systemRed.withAlphaComponent(0.4).cgColor; panel.tag = 888
+        let label = UILabel(frame: CGRect(x: 10, y: 15, width: 220, height: 40))
+        label.text = "Delete '\(btn.title(for: .normal) ?? "")'?"; label.textColor = .white; label.textAlignment = .center; label.font = .boldSystemFont(ofSize: 16); label.numberOfLines = 2
+        panel.addSubview(label)
+        let cancelBtn = UIButton(type: .system); cancelBtn.frame = CGRect(x: 15, y: 70, width: 100, height: 35); cancelBtn.setTitle("Cancel", for: .normal); cancelBtn.setTitleColor(.white, for: .normal); cancelBtn.backgroundColor = .gray.withAlphaComponent(0.6); cancelBtn.layer.cornerRadius = 8
+        cancelBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside); panel.addSubview(cancelBtn)
+        let delBtn = UIButton(type: .system); delBtn.frame = CGRect(x: 125, y: 70, width: 100, height: 35); delBtn.setTitle("Delete", for: .normal); delBtn.setTitleColor(.white, for: .normal); delBtn.backgroundColor = .systemRed.withAlphaComponent(0.8); delBtn.layer.cornerRadius = 8
+        delBtn.addTarget(self, action: #selector(hideConfigPanels), for: .touchUpInside)
+        delBtn.addAction(UIAction { [weak self, weak btn] _ in
+            btn?.removeFromSuperview()
+            if let b = btn { self?.customButtons.removeAll { $0 == b } }
+            self?.saveAllCustomButtons()
+        }, for: .touchUpInside)
+        panel.addSubview(delBtn); view.addSubview(panel)
+    }
+
+    private func saveAllCustomButtons() {
+        let dataList = customButtons.map { btn -> [String: Any] in
+            return ["name": btn.title(for: .normal) ?? "", "scancode": btn.tag, "center": NSCoder.string(for: btn.center)]
+        }
+        UserDefaults.standard.set(dataList, forKey: "CustomButtonsList_v7")
+    }
+    private func loadAllCustomButtons() {
+        guard let savedList = UserDefaults.standard.array(forKey: "CustomButtonsList_v7") as? [[String: Any]] else { return }
+        for item in savedList {
+            if let name = item["name"] as? String, let scancode = item["scancode"] as? Int, let centerStr = item["center"] as? String {
+                createAndAddButton(name: name, scancode: Int32(scancode), at: NSCoder.cgPoint(for: centerStr))
+            }
+        }
+    }
+}
+
+private var overlayWindow: PassThroughWindow?
+
 private func startEngine() {
     guard let game = OpenMWLauncher.scanForGameData() else {
-        presentAlert(title: "No game files found",
-                     message: "Copy your Morrowind “Data Files” folder into this app with the Files app, then try again.")
+        presentAlert(title: "No game files found", message: "...")
         return
     }
-    // Give Compose a beat to finish the tap animation before the engine
-    // takes over the main thread for good.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-        do {
-            try OpenMWLauncher.launch(game: game)
-        } catch {
-            presentAlert(title: "Could not start the game",
-                         message: error.localizedDescription)
-        }
+    LauncherRootViewController.shared?.switchToLandscape()
+    if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+        let window = PassThroughWindow(windowScene: scene)
+        window.rootViewController = GameplayOverlayController()
+        window.windowLevel = UIWindow.Level.statusBar + 1
+        window.backgroundColor = .clear; window.isOpaque = false; window.makeKeyAndVisible()
+        overlayWindow = window
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        do { try OpenMWLauncher.launch(game: game) }
+        catch { presentAlert(title: "Could not start the game", message: error.localizedDescription) }
+    }
+}
+
+private func isMouseShown() -> Bool {
+    typealias ShowCursorFn = @convention(c) (Int32) -> Int32
+    guard let handle = dlopen(nil, RTLD_NOW) else { return false }
+    if let sym = dlsym(handle, "SDL_ShowCursor") {
+        let showCursor = unsafeBitCast(sym, to: ShowCursorFn.self)
+        // SDL_QUERY is -1
+        return showCursor(-1) == 1
+    }
+    return false
+}
+
+private func getMousePosition() -> CGPoint {
+    typealias GetMouseStateFn = @convention(c) (UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> UInt32
+    guard let handle = dlopen(nil, RTLD_NOW) else { return .zero }
+    if let sym = dlsym(handle, "SDL_GetMouseState") {
+        let getMouseState = unsafeBitCast(sym, to: GetMouseStateFn.self)
+        var x: Int32 = 0
+        var y: Int32 = 0
+        _ = getMouseState(&x, &y)
+        return CGPoint(x: CGFloat(x), y: CGFloat(y))
+    }
+    return .zero
+}
+
+private func sendNativeKey(scancode: Int32, state: Int32) {
+    typealias SendKeyFn = @convention(c) (Int32, Int32) -> Void
+    guard let handle = dlopen(nil, RTLD_NOW) else {
+        print("Error: dlopen(nil) failed")
+        return
+    }
+    if let sym = dlsym(handle, "SDL_SendVirtualKeyboardKey") {
+        let sendKey = unsafeBitCast(sym, to: SendKeyFn.self)
+        sendKey(state, scancode)
+    } else {
+        print("Error: Could not find symbol SDL_SendVirtualKeyboardKey")
+    }
+}
+
+private func sendNativeMouseButton(button: UInt8, state: UInt8) {
+    typealias SendMouseFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt8, UInt8) -> Int32
+    guard let handle = dlopen(nil, RTLD_NOW) else {
+        print("Error: dlopen(nil) failed")
+        return
+    }
+    if let sym = dlsym(handle, "SDL_SendMouseButton") {
+        let sendMouse = unsafeBitCast(sym, to: SendMouseFn.self)
+        // Pass nil for window; SDL will usually route this to the focus window internally
+        _ = sendMouse(nil, 0, state, button)
+    } else {
+        print("Error: Could not find symbol SDL_SendMouseButton")
+    }
+}
+
+private func sendNativeMouseMotion(dx: Int32, dy: Int32) {
+    typealias SendMouseMotionFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, Int32, Int32, Int32) -> Int32
+    guard let handle = dlopen(nil, RTLD_NOW) else { return }
+    if let sym = dlsym(handle, "SDL_SendMouseMotion") {
+        let sendMotion = unsafeBitCast(sym, to: SendMouseMotionFn.self)
+        _ = sendMotion(nil, 0, 1, dx, dy)
     }
 }
 
 private func presentAlert(title: String, message: String) {
     let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .flatMap { $0.windows }
-        .first { $0.isKeyWindow }?
-        .rootViewController?
-        .present(alert, animated: true)
+    UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }.first { $0.isKeyWindow }?.rootViewController?.present(alert, animated: true)
 }
