@@ -64,6 +64,15 @@ stage_platform() {
         echo "Copied default settings.cfg to OpenMWAssets"
     fi
 
+    # Copy pointer_arrow.png from buildscripts
+    if [ -f "${REPO_DIR}/buildscripts/UI/pointer_arrow.png" ]; then
+        cp "${REPO_DIR}/buildscripts/UI/pointer_arrow.png" "${assets_dest}/pointer_arrow.png"
+        echo "Copied pointer_arrow.png to OpenMWAssets"
+    elif [ -f "${REPO_DIR}/buildscripts/pointer_arrow.png" ]; then
+        cp "${REPO_DIR}/buildscripts/pointer_arrow.png" "${assets_dest}/pointer_arrow.png"
+        echo "Copied pointer_arrow.png to OpenMWAssets"
+    fi
+
     # Copy the resources folder (always from Release)
     if [ -d "${resources_src}/Release/resources" ]; then
         echo "Copying resources folder from Release..."
