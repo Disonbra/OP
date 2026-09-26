@@ -427,7 +427,7 @@ ExternalProject_Add(collada
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         -DCMAKE_CXX_STANDARD=11
         -DCMAKE_CXX_STANDARD_REQUIRED=ON
-        "-DCMAKE_CXX_FLAGS=${COMMON_FLAGS} -DNO_BOOST -DNO_ZAE -I<SOURCE_DIR>/dom/external-libs/minizip-1.1"
+        "-DCMAKE_CXX_FLAGS=${COMMON_FLAGS} -fvisibility=default -DNO_BOOST -DNO_ZAE -I<SOURCE_DIR>/dom/external-libs/minizip-1.1"
         BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
         INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
         USES_TERMINAL_BUILD ON
@@ -506,7 +506,7 @@ ExternalProject_Add(osg
 
 # ------------------- OpenMW -------------------
 ExternalProject_Add(openmw
-        DEPENDS ios_toolchain osg bullet mygui luajit icu ffmpeg sdl2 lz4 boost
+        DEPENDS ios_toolchain osg bullet mygui luajit icu ffmpeg sdl2 lz4 boost collada
         URL https://github.com/sisah2/openmw/archive/${OPENMW_VERSION}.tar.gz
         PATCH_COMMAND patch -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch || true
         COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch || true
@@ -524,8 +524,8 @@ ExternalProject_Add(openmw
         -DBUILD_MWINIIMPORTER=0 -DBUILD_ESSIMPORTER=0 -DBUILD_OPENCS=0 -DBUILD_NAVMESHTOOL=0
         -DBUILD_WIZARD=0 -DBUILD_MYGUI_PLUGIN=0 -DBUILD_BULLETOBJECTTOOL=0
         -DOPENMW_USE_SYSTEM_SQLITE3=OFF -DOPENMW_USE_SYSTEM_YAML_CPP=OFF -DOPENMW_USE_SYSTEM_ICU=ON
-        -DLUA_HAS_CUSTOM_ALLOCATOR=ON -DOSG_STATIC=TRUE
-        "-DCMAKE_CXX_FLAGS=-std=gnu++20 -I${INSTALL_PREFIX}/include/ ${COMMON_FLAGS}"
+        -DLUA_HAS_CUSTOM_ALLOCATOR=ON -DOSG_STATIC=TRUE -DCMAKE_CXX_STANDARD=20
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON
         BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
         INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
         USES_TERMINAL_BUILD ON
