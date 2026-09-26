@@ -159,35 +159,6 @@ index 3c61dae..df2be1f 100644
 +         // Clean up the autorelease pool
 +         [mypool release];
 +#endif
-+        
-+//      NSAutoreleasePool* mypool = [[NSAutoreleasePool alloc] init];
-+
-+        NSString* myBundlePlugInPath;
-+
-+        // This will grab the "official" bundle plug in path.
-+        // It will be YourProgram.app/Contents/PlugIns (for App bundles)
-+        // or YourProgram/PlugIns (for Unix executables)
-+        myBundlePlugInPath = [[NSBundle mainBundle] builtInPlugInsPath];
-+
-+        // Since Obj-C and C++ objects don't understand each other,
-+        // the Obj-C strings must be converted down to C strings so
-+        // C++ can make them into C++ strings.
-+        filepath.push_back( [myBundlePlugInPath UTF8String] );
-+
-+        // add all application-support-folders
-+        NSArray *systemSearchPaths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSAllDomainsMask, YES);
-+
-+        NSFileManager *fileManager = [NSFileManager defaultManager];
-+
-         for (NSString *systemPath in systemSearchPaths) {
-             NSString *systemPluginsPath = [systemPath stringByAppendingPathComponent:@"OpenSceneGraph/PlugIns"];
-             if ([fileManager fileExistsAtPath:systemPluginsPath]) {
-@@ -1071,7 +1133,7 @@ bool osgDB::containsCurrentWorkingDirectoryReference(const FilePathList& paths)
-         }
- 
-         // Clean up the autorelease pool
--        [mypool release];
-+        //[mypool release];
      }
  
      #elif defined(COMPILE_CARBON_VERSION)

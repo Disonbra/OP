@@ -1,5 +1,6 @@
 # Build output tree (symlink to external volume)
 ios_build
+ios_build/src
 
 # Xcode
 iosApp/build/
@@ -13,12 +14,18 @@ xcuserdata/
 iosApp/EmbeddedLibs/
 iosApp/EmbeddedLibsDevice/
 iosApp/EmbeddedLibsSim/
+iosApp/OpenMWAssets/
 
 # Gradle / Kotlin
 .gradle/
 .kotlin/
+.idea
 build/
+build_cmake_sim
+build_cmake_os64
 composeApp/build/
 
 # macOS
 .DS_Store
+
+.zip

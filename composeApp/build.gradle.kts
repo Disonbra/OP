@@ -118,6 +118,96 @@ dependencies {
     debugImplementation(compose.uiTooling)
 }
 
+
+val iosTargets = listOf(
+    "ios_toolchain",
+    "icu_host",
+    "icu",
+    "bzip2",
+    "luajit",
+    "zlib",
+    "libpng",
+    "freetype",
+    "libxml2",
+    "libjpeg-turbo",
+    "openal",
+    "boost",
+    "iconv",
+    "liblzma",
+    "ffmpeg",
+    "sdl2",
+    "bullet",
+    "mygui",
+    "lz4",
+    "libogg",
+    "vorbis",
+    "collada",
+    "glslang",
+    "spirv-cross",
+    "osg",
+    "openmw"
+)
+val iosTargetsString = iosTargets.joinToString(" ")
+
+val buildIosDepsDevice = tasks.register<Exec>("buildIosDepsDevice") {
+    group = "build"
+    description = "Builds iOS C++ dependencies for ARM64 Device (OS64) using CMake target by target"
+    val projectDir = rootProject.projectDir
+    val buildDir = file("${projectDir}/ios_build/build_device")
+    val sourceDir = file("${projectDir}/buildscripts")
+    workingDir = projectDir
+    commandLine(
+        "sh", "-c",
+        "cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=OS64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done"
+    )
+}
+
+val buildIosDepsSim = tasks.register<Exec>("buildIosDepsSim") {
+    group = "build"
+    description = "Builds iOS C++ dependencies for Simulator (SIMULATORARM64) using CMake target by target"
+    val projectDir = rootProject.projectDir
+    val buildDir = file("${projectDir}/ios_build/build_sim")
+    val sourceDir = file("${projectDir}/buildscripts")
+    workingDir = projectDir
+    commandLine(
+        "sh", "-c",
+        "cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=SIMULATORARM64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done"
+    )
+}
+
+tasks.register("buildIosDeps") {
+    group = "build"
+    description = "Builds iOS C++ dependencies for both Device and Simulator using CMake"
+    dependsOn(buildIosDepsDevice, buildIosDepsSim)
+}
+
+val cleanIosDeps = tasks.register<Delete>("cleanIosDeps") {
+    group = "build"
+    description = "Cleans CMake build directories for iOS dependencies"
+    delete(
+        file("${rootProject.projectDir}/ios_build/build_device"),
+        file("${rootProject.projectDir}/ios_build/build_sim"),
+        file("${rootProject.projectDir}/build_cmake_os64"),
+        file("${rootProject.projectDir}/build_cmake_sim")
+    )
+}
+
+tasks.named("clean") {
+    dependsOn(cleanIosDeps)
+}
+
+tasks.matching { task -> task.name.contains("IosArm64") && !task.name.contains("Simulator") }.configureEach {
+    if (name.startsWith("compileKotlin") || name.startsWith("link") || name.startsWith("embedAndSign")) {
+        dependsOn(buildIosDepsDevice)
+    }
+}
+
+tasks.matching { task -> task.name.contains("IosSimulatorArm64") }.configureEach {
+    if (name.startsWith("compileKotlin") || name.startsWith("link") || name.startsWith("embedAndSign")) {
+        dependsOn(buildIosDepsSim)
+    }
+}
+
 tasks.register("printIosDeviceInfo") {
     group = "help"
     description = "Prints information about connected iOS Simulators and physical devices"

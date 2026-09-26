@@ -58,7 +58,7 @@ private fun readIniValues(): Map<String, List<Triple<String, Any, String?>>> {
         when {
             trimmedLine.startsWith("[") && trimmedLine.endsWith("]") -> {
                 currentSection = trimmedLine.substring(1, trimmedLine.length - 1).trim()
-                sections[currentSection!!] = mutableMapOf()
+                sections[currentSection] = mutableMapOf()
                 pendingComment = null
             }
             trimmedLine.startsWith("#") -> {
@@ -69,9 +69,9 @@ private fun readIniValues(): Map<String, List<Triple<String, Any, String?>>> {
                 val key = parts[0].trim()
                 val value = parts[1].trim()
                 if (currentSection != null) {
-                    sections[currentSection!!]!![key] = value
+                    sections[currentSection]!![key] = value
                     if (pendingComment != null) {
-                        comments["$currentSection:$key"] = pendingComment!!
+                        comments["$currentSection:$key"] = pendingComment
                     }
                 }
                 pendingComment = null
@@ -117,7 +117,7 @@ fun writeIniValue(section: String, key: String, value: Any) {
             }
         } else if (sectionFound) {
             val parts = line.split("=", limit = 2)
-            if (parts.size >= 1 && parts[0].trim() == key.trim()) {
+            if (parts.isNotEmpty() && parts[0].trim() == key.trim()) {
                 lines[i] = "${key.trim()} = ${value.toString().trim()}"
                 keyFound = true
                 break
@@ -246,7 +246,7 @@ fun SettingRow(section: String, key: String, value: Any, comment: String?, onSav
             Spacer(Modifier.width(16.dp))
             when (value) {
                 is Boolean -> {
-                    var checked by remember(value) { mutableStateOf(value as Boolean) }
+                    var checked by remember(value) { mutableStateOf(value) }
                     Switch(
                         checked = checked,
                         onCheckedChange = {

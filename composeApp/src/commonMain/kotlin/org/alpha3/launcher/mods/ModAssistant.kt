@@ -142,7 +142,7 @@ fun navigateToMod(
                 try {
 
                     lazyListState.scrollToItem(itemIndex)  // Use scrollToItem for testing
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // nothing here
                 }
             }

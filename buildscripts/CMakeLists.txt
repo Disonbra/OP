@@ -10,17 +10,19 @@ include(ExternalProject)
 # ------------------- Configuration -------------------
 set(IOS_PLATFORM "OS64" CACHE STRING "iOS Platform (OS64, SIMULATORARM64)")
 set(DEPLOYMENT_TARGET "26.2")
-set(COMMON_FLAGS "-O3 -fPIC -stdlib=libc++")
+set(COMMON_FLAGS "-O3 -fPIC")
 cmake_host_system_information(RESULT BUILD_JOBS QUERY NUMBER_OF_LOGICAL_CORES)
 
 if(IOS_PLATFORM STREQUAL "OS64")
     set(SDK_NAME "iphoneos")
     set(LUAJIT_PLATFORM "ios")
+    set(LUAJIT_LIB_SUBPATH "ios/thin/arm64/lib/libluajit.a")
     set(ARCH "arm64")
     set(MIN_VERSION_FLAG "-miphoneos-version-min=${DEPLOYMENT_TARGET}")
 else()
     set(SDK_NAME "iphonesimulator")
     set(LUAJIT_PLATFORM "isimulator")
+    set(LUAJIT_LIB_SUBPATH "isimulator/thin/arm64/lib/libluajit.a")
     set(ARCH "arm64")
     set(MIN_VERSION_FLAG "-mios-simulator-version-min=${DEPLOYMENT_TARGET}")
 endif()
@@ -38,7 +40,7 @@ set(SRC_DIR "${WORK_DIR}/src")
 set(PREFIX "${WORK_DIR}/ios-libs")
 set(INSTALL_PREFIX "${PREFIX}/${IOS_PLATFORM}")
 set(TOOLCHAIN_DIR "${WORK_DIR}/ios-cmake")
-set(PATCHES_DIR "${CMAKE_SOURCE_DIR}/buildscripts/patches")
+set(PATCHES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches")
 
 file(MAKE_DIRECTORY "${SRC_DIR}" "${PREFIX}")
 
@@ -71,6 +73,7 @@ ExternalProject_Add(ios_toolchain
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ""
+    UPDATE_COMMAND ""
 )
 
 set(TOOLCHAIN_FILE "${TOOLCHAIN_DIR}/ios.toolchain.cmake")
@@ -126,8 +129,8 @@ ExternalProject_Add(icu_host
     SOURCE_DIR "${SRC_DIR}/icu"
     BINARY_DIR "${WORK_DIR}/icu_host_build"
     CONFIGURE_COMMAND <SOURCE_DIR>/icu4c/source/configure --prefix=<BINARY_DIR>/install --disable-tests --disable-samples --disable-icuio --disable-extras
-    BUILD_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} make -j${BUILD_JOBS}
-    INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} make install
+    BUILD_COMMAND make -j${BUILD_JOBS}
+    INSTALL_COMMAND make install
 )
 
 ExternalProject_Add(icu
@@ -135,7 +138,7 @@ ExternalProject_Add(icu
     URL https://github.com/unicode-org/icu/archive/refs/tags/release-${LIBICU_VERSION}.tar.gz
     SOURCE_DIR "${SRC_DIR}/icu"
     BINARY_DIR "${WORK_DIR}/icu_cross_build"
-    CONFIGURE_COMMAND <SOURCE_DIR>/icu4c/source/configure
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} <SOURCE_DIR>/icu4c/source/configure
         --host=arm-apple-darwin
         --prefix=${INSTALL_PREFIX}
         --enable-static
@@ -146,7 +149,6 @@ ExternalProject_Add(icu
         --disable-extras
         --disable-tools
         --with-cross-build=${WORK_DIR}/icu_host_build
-        ${CONFIGURE_ENV}
     BUILD_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} make -j${BUILD_JOBS}
     INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} make install
 )
@@ -155,6 +157,7 @@ ExternalProject_Add(icu
 ExternalProject_Add(bzip2
     DEPENDS ios_toolchain
     GIT_REPOSITORY https://github.com/libarchive/bzip2.git
+    UPDATE_COMMAND ""
     SOURCE_DIR "${SRC_DIR}/bzip2"
     CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS} -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DENABLE_APP=OFF
     BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
@@ -165,12 +168,13 @@ ExternalProject_Add(bzip2
 ExternalProject_Add(luajit
     GIT_REPOSITORY https://github.com/mpvkit/libluajit-build.git
     GIT_TAG main
+    UPDATE_COMMAND ""
     SOURCE_DIR "${SRC_DIR}/luajit"
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} make build platform=${LUAJIT_PLATFORM} XCFLAGS+=-DLUAJIT_ENABLE_GC64
     INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} ${CMAKE_COMMAND} -E copy_directory dist/release/libluajit/include/luajit-2.1/ ${INSTALL_PREFIX}/include/
-            COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} ${CMAKE_COMMAND} -E copy dist/release/libluajit/lib/ios/thin/arm64/lib/libluajit.a ${INSTALL_PREFIX}/lib/
+            COMMAND ${CMAKE_COMMAND} -E env ${CONFIGURE_ENV} ${CMAKE_COMMAND} -E copy dist/release/libluajit/lib/${LUAJIT_LIB_SUBPATH} ${INSTALL_PREFIX}/lib/libluajit.a
 )
 
 # ------------------- Zlib -------------------
@@ -178,10 +182,9 @@ ExternalProject_Add(zlib
     DEPENDS ios_toolchain
     URL https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz
     SOURCE_DIR "${SRC_DIR}/zlib"
-    PATCH_COMMAND sed -i "" "s/add_executable(example/#/g" CMakeLists.txt &&
-                  sed -i "" "s/add_executable(minigzip/#/g" CMakeLists.txt
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release -- -j${BUILD_JOBS}
+    PATCH_COMMAND ""
+    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS} -DZLIB_BUILD_TESTING=OFF -DZLIB_BUILD_SHARED=OFF
+    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
     INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
 )
 
@@ -230,6 +233,7 @@ ExternalProject_Add(libjpeg-turbo
     SOURCE_DIR "${SRC_DIR}/libjpeg-turbo"
     CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DENABLE_SHARED=OFF
+        -DSIZEOF_SIZE_T=8
     BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
     INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
 )
@@ -257,7 +261,7 @@ ExternalProject_Add(boost
     DEPENDS ios_toolchain
     URL https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz
     SOURCE_DIR "${SRC_DIR}/boost"
-    PATCH_COMMAND patch -p1 -d libs/system < ${PATCHES_DIR}/system.diff
+    PATCH_COMMAND patch -p1 -t -N -d libs/system < ${PATCHES_DIR}/system.diff || true
     CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DBOOST_INCLUDE_LIBRARIES=filesystem\;program_options\;iostreams\;geometry\;system
     BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
@@ -322,7 +326,7 @@ ExternalProject_Add(sdl2
     DEPENDS ios_toolchain
     URL https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz
     SOURCE_DIR "${SRC_DIR}/sdl2"
-    PATCH_COMMAND patch -p1 < ${PATCHES_DIR}/sdl2_ios_scene.patch
+    PATCH_COMMAND patch -p1 -t -N < ${PATCHES_DIR}/sdl2_ios_scene.patch || true
     CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS} -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_FORCE_GCC_FVISIBILITY=OFF
     BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
     INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
@@ -384,70 +388,78 @@ ExternalProject_Add(vorbis
 
 # ------------------- COLLADA-DOM -------------------
 ExternalProject_Add(collada
-    DEPENDS ios_toolchain boost libxml2 zlib
-    URL https://github.com/rdiankov/collada-dom/archive/v${COLLADA_DOM_VERSION}.tar.gz
-    SOURCE_DIR "${SRC_DIR}/collada"
-    PATCH_COMMAND sed -i ".bak" "s|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g" dom/include/dae.h &&
-                  sed -i ".bak" "s|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g" dom/src/dae/daeUtils.cpp &&
-                  sed -i ".bak" "s|archivePath.branch_path().string()|archivePath.parent_path().string()|g" dom/src/dae/daeUtils.cpp
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
+        DEPENDS ios_toolchain boost libxml2 zlib
+        URL https://github.com/rdiankov/collada-dom/archive/v${COLLADA_DOM_VERSION}.tar.gz
+        PATCH_COMMAND sed -i ".bak" "s|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g" dom/include/dae.h &&
+        sed -i ".bak" "s|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g" dom/src/dae/daeUtils.cpp &&
+        sed -i ".bak" "s|archivePath.branch_path().string()|archivePath.parent_path().string()|g" dom/src/dae/daeUtils.cpp
+        CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DCMAKE_BUILD_TYPE=Release
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         -DCMAKE_CXX_STANDARD=11
         -DCMAKE_CXX_STANDARD_REQUIRED=ON
-        -Dliburiparser_FOUND=OFF
-        -Dminizip_FOUND=OFF
         "-DCMAKE_CXX_FLAGS=${COMMON_FLAGS} -DNO_BOOST -DNO_ZAE -I<SOURCE_DIR>/dom/external-libs/minizip-1.1"
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
-    INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
+        INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        USES_TERMINAL_BUILD ON
+        USES_TERMINAL_INSTALL ON
 )
 
 # ------------------- glslang -------------------
 ExternalProject_Add(glslang
-    DEPENDS ios_toolchain
-    GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
-    GIT_TAG main
-    SOURCE_DIR "${SRC_DIR}/glslang"
-    PATCH_COMMAND sed -i '' "s/3.22.1/3.19.6/g" CMakeLists.txt
-          COMMAND sed -i '' "s/CMAKE_CXX_STANDARD 23/CMAKE_CXX_STANDARD 17/g" CMakeLists.txt
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
+        DEPENDS ios_toolchain
+        GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+        GIT_TAG main
+        UPDATE_COMMAND ""
+        PATCH_COMMAND ""
+        CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DBUILD_EXTERNAL=OFF -DENABLE_OPT=OFF -DENABLE_PCH=OFF -DENABLE_GLSLANG_BINARIES=OFF
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
-    INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${INSTALL_PREFIX}/include/glslang
-            COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/glslang ${INSTALL_PREFIX}/include/glslang
-            COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/SPIRV ${INSTALL_PREFIX}/include/glslang/SPIRV
+        BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
+        INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${INSTALL_PREFIX}/include/glslang
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${INSTALL_PREFIX}/lib
+        COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/glslang ${INSTALL_PREFIX}/include/glslang
+        COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/SPIRV ${INSTALL_PREFIX}/include/glslang/SPIRV
+        COMMAND sh -c "cp <BINARY_DIR>/SPIRV/Release-*/libSPIRV.a ${INSTALL_PREFIX}/lib/ 2>/dev/null || cp <BINARY_DIR>/SPIRV/libSPIRV.a ${INSTALL_PREFIX}/lib/"
+        COMMAND sh -c "cp <BINARY_DIR>/glslang/Release-*/libglslang.a ${INSTALL_PREFIX}/lib/ 2>/dev/null || cp <BINARY_DIR>/glslang/libglslang.a ${INSTALL_PREFIX}/lib/"
+        COMMAND sh -c "cp <BINARY_DIR>/glslang/Release-*/libMachineIndependent.a ${INSTALL_PREFIX}/lib/ 2>/dev/null || cp <BINARY_DIR>/glslang/libMachineIndependent.a ${INSTALL_PREFIX}/lib/"
+        COMMAND sh -c "cp <BINARY_DIR>/glslang/Release-*/libGenericCodeGen.a ${INSTALL_PREFIX}/lib/ 2>/dev/null || cp <BINARY_DIR>/glslang/libGenericCodeGen.a ${INSTALL_PREFIX}/lib/"
+        COMMAND sh -c "cp <BINARY_DIR>/glslang/OSDependent/Unix/Release-*/libOSDependent.a ${INSTALL_PREFIX}/lib/ 2>/dev/null || cp <BINARY_DIR>/glslang/OSDependent/Unix/libOSDependent.a ${INSTALL_PREFIX}/lib/"
+        USES_TERMINAL_BUILD ON
+        USES_TERMINAL_INSTALL ON
 )
 
 # ------------------- spirv-cross -------------------
 ExternalProject_Add(spirv-cross
-    DEPENDS ios_toolchain
-    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
-    GIT_TAG main
-    SOURCE_DIR "${SRC_DIR}/spirv-cross"
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
+        DEPENDS ios_toolchain
+        GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
+        GIT_TAG main
+        UPDATE_COMMAND ""
+        CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DSPIRV_CROSS_CLI=OFF -DSPIRV_CROSS_ENABLE_CPP=OFF -DSPIRV_CROSS_ENABLE_HLSL=OFF -DSPIRV_CROSS_ENABLE_MSL=OFF
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
-    INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
+        INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        USES_TERMINAL_BUILD ON
+        USES_TERMINAL_INSTALL ON
 )
 
 # ------------------- OpenSceneGraph -------------------
 ExternalProject_Add(osg
-    DEPENDS ios_toolchain freetype libpng libjpeg-turbo collada
-    URL https://github.com/sisah2/osg/archive/${OSG_VERSION}.tar.gz
-    SOURCE_DIR "${SRC_DIR}/osg"
-    PATCH_COMMAND patch -p1 < ${PATCHES_DIR}/osg_iOS.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/remove-lib-prefix-from-plugins.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/fix-freetype-include-dirs.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0001-Replace-Atomic-impl-with-std-atomic.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0002-BufferObject-make-numClients-atomic.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0004-IncrementalCompileOperation-wrap-some-stuff-in-atomi.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/force-add-plugins.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/dae_collada.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/enable-some-features.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/OSGtextures.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/msaa+clean-log.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0005-CullSettings-make-inheritanceMask-atomic-to-silence-.patch
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
+        DEPENDS ios_toolchain freetype libpng libjpeg-turbo collada
+        URL https://github.com/sisah2/osg/archive/${OSG_VERSION}.tar.gz
+        PATCH_COMMAND patch -p1 -t -N < ${PATCHES_DIR}/osg_iOS.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/remove-lib-prefix-from-plugins.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/fix-freetype-include-dirs.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0001-Replace-Atomic-impl-with-std-atomic.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0002-BufferObject-make-numClients-atomic.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0004-IncrementalCompileOperation-wrap-some-stuff-in-atomi.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/force-add-plugins.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/dae_collada.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/enable-some-features.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/OSGtextures.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/msaa+clean-log.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0005-CullSettings-make-inheritanceMask-atomic-to-silence-.patch || true
+        CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DOPENGL_PROFILE=GLES3 -DOSG_BUILD_PLATFORM_IPHONE=ON -DOSG_WINDOWING_SYSTEM=IOS
         -DDYNAMIC_OPENTHREADS=OFF -DDYNAMIC_OPENSCENEGRAPH=OFF
         -DBUILD_OSG_PLUGIN_OSG=ON -DBUILD_OSG_PLUGIN_DAE=ON -DBUILD_OSG_PLUGIN_DDS=ON
@@ -456,32 +468,37 @@ ExternalProject_Add(osg
         -DOSG_CPP_EXCEPTIONS_AVAILABLE=TRUE -DOSG_GL1_AVAILABLE=OFF -DOSG_GL2_AVAILABLE=OFF
         -DOSG_GL3_AVAILABLE=OFF -DOSG_GLES1_AVAILABLE=OFF -DOSG_GLES2_AVAILABLE=OFF -DOSG_GLES3_AVAILABLE=ON
         -DBUILD_OSG_APPLICATIONS=OFF -DBUILD_OSG_PLUGINS_BY_DEFAULT=OFF -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
-    INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        -DCMAKE_CXX_STANDARD=11 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+        BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
+        INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        USES_TERMINAL_BUILD ON
+        USES_TERMINAL_INSTALL ON
 )
 
 # ------------------- OpenMW -------------------
 ExternalProject_Add(openmw
-    DEPENDS ios_toolchain osg bullet mygui luajit icu ffmpeg sdl2 lz4
-    URL https://github.com/sisah2/openmw/archive/${OPENMW_VERSION}.tar.gz
-    SOURCE_DIR "${SRC_DIR}/openmw"
-    PATCH_COMMAND patch -p1 < ${PATCHES_DIR}/OpenMW_iOS_2.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/0009-windowmanagerimp-always-show-mouse-when-possible-pat.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/ktx.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/base-changes.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/allow-more-es-versions.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/GLES-3-OMW.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/textures.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/features.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/misc.patch
-          COMMAND patch -p1 < ${PATCHES_DIR}/iosGLESomw.patch
-    CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
+        DEPENDS ios_toolchain osg bullet mygui luajit icu ffmpeg sdl2 lz4 boost
+        URL https://github.com/sisah2/openmw/archive/${OPENMW_VERSION}.tar.gz
+        PATCH_COMMAND patch -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/0009-windowmanagerimp-always-show-mouse-when-possible-pat.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/ktx.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/base-changes.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/allow-more-es-versions.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/GLES-3-OMW.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/textures.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/features.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/misc.patch || true
+        COMMAND patch -p1 -t -N < ${PATCHES_DIR}/iosGLESomw.patch || true
+        CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
         -DBUILD_BSATOOL=0 -DBUILD_NIFTEST=0 -DBUILD_ESMTOOL=0 -DBUILD_LAUNCHER=0
         -DBUILD_MWINIIMPORTER=0 -DBUILD_ESSIMPORTER=0 -DBUILD_OPENCS=0 -DBUILD_NAVMESHTOOL=0
         -DBUILD_WIZARD=0 -DBUILD_MYGUI_PLUGIN=0 -DBUILD_BULLETOBJECTTOOL=0
         -DOPENMW_USE_SYSTEM_SQLITE3=OFF -DOPENMW_USE_SYSTEM_YAML_CPP=OFF -DOPENMW_USE_SYSTEM_ICU=ON
-        -DLUA_HAS_CUSTOM_ALLOCATOR=ON -DOSG_STATIC=TRUE -DCMAKE_CXX_STANDARD=20
-    BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
-    INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        -DLUA_HAS_CUSTOM_ALLOCATOR=ON -DOSG_STATIC=TRUE
+        -DCMAKE_CXX_FLAGS=-std=gnu++20\ -I${INSTALL_PREFIX}/include/\ ${COMMON_FLAGS}
+        BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
+        INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+        USES_TERMINAL_BUILD ON
+        USES_TERMINAL_INSTALL ON
 )
