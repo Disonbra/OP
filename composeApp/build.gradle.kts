@@ -1,11 +1,19 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.plugins.ide.idea.model.IdeaModel
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    id("idea")
+}
+
+configure<IdeaModel> {
+    module {
+        excludeDirs.add(file("${rootProject.projectDir}/ios_build"))
+    }
 }
 
 // Provide defaults for Xcode properties to avoid "no value available" errors
@@ -155,10 +163,11 @@ val buildIosDepsDevice = tasks.register<Exec>("buildIosDepsDevice") {
     val projectDir = rootProject.projectDir
     val buildDir = file("${projectDir}/ios_build/build_device")
     val sourceDir = file("${projectDir}/buildscripts")
+    val logFile = file("${projectDir}/ios_build/cmake_build_device.log")
     workingDir = projectDir
     commandLine(
         "sh", "-c",
-        "cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=OS64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done"
+        "mkdir -p \"${projectDir}/ios_build\" && (cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=OS64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done) 2>&1 | tee \"$logFile\""
     )
 }
 
@@ -168,10 +177,11 @@ val buildIosDepsSim = tasks.register<Exec>("buildIosDepsSim") {
     val projectDir = rootProject.projectDir
     val buildDir = file("${projectDir}/ios_build/build_sim")
     val sourceDir = file("${projectDir}/buildscripts")
+    val logFile = file("${projectDir}/ios_build/cmake_build_sim.log")
     workingDir = projectDir
     commandLine(
         "sh", "-c",
-        "cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=SIMULATORARM64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done"
+        "mkdir -p \"${projectDir}/ios_build\" && (cmake -B \"$buildDir\" -S \"$sourceDir\" -DIOS_PLATFORM=SIMULATORARM64 && for t in $iosTargetsString; do echo \"=== Building target: \$t ===\" && cmake --build \"$buildDir\" --config Release --target \"\$t\" || exit 1; done) 2>&1 | tee \"$logFile\""
     )
 }
 

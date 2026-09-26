@@ -9,21 +9,20 @@ include(ExternalProject)
 
 # ------------------- Configuration -------------------
 set(IOS_PLATFORM "OS64" CACHE STRING "iOS Platform (OS64, SIMULATORARM64)")
+set(ARCH "arm64")
 set(DEPLOYMENT_TARGET "26.2")
-set(COMMON_FLAGS "-O3 -fPIC")
+set(COMMON_FLAGS "-O3 -fPIC -fobjc-arc -w")
 cmake_host_system_information(RESULT BUILD_JOBS QUERY NUMBER_OF_LOGICAL_CORES)
 
 if(IOS_PLATFORM STREQUAL "OS64")
     set(SDK_NAME "iphoneos")
     set(LUAJIT_PLATFORM "ios")
     set(LUAJIT_LIB_SUBPATH "ios/thin/arm64/lib/libluajit.a")
-    set(ARCH "arm64")
     set(MIN_VERSION_FLAG "-miphoneos-version-min=${DEPLOYMENT_TARGET}")
 else()
     set(SDK_NAME "iphonesimulator")
     set(LUAJIT_PLATFORM "isimulator")
     set(LUAJIT_LIB_SUBPATH "isimulator/thin/arm64/lib/libluajit.a")
-    set(ARCH "arm64")
     set(MIN_VERSION_FLAG "-mios-simulator-version-min=${DEPLOYMENT_TARGET}")
 endif()
 
@@ -46,7 +45,7 @@ file(MAKE_DIRECTORY "${SRC_DIR}" "${PREFIX}")
 
 set(CONFIGURE_CFLAGS "${COMMON_FLAGS} -isysroot ${IOS_SDK_PATH} -arch ${ARCH} ${MIN_VERSION_FLAG}")
 set(CONFIGURE_CPPFLAGS "-isysroot ${IOS_SDK_PATH} -I${INSTALL_PREFIX}/include")
-set(CONFIGURE_LDFLAGS "-isysroot ${IOS_SDK_PATH} -arch ${ARCH} -L${INSTALL_PREFIX}/lib")
+set(CONFIGURE_LDFLAGS "-isysroot ${IOS_SDK_PATH} -arch ${ARCH} ${MIN_VERSION_FLAG} -L${INSTALL_PREFIX}/lib")
 
 set(CONFIGURE_ENV
     "CC=${IOS_CLANG}"
@@ -55,6 +54,7 @@ set(CONFIGURE_ENV
     "NM=${IOS_NM}"
     "RANLIB=${IOS_RANLIB}"
     "CFLAGS=${CONFIGURE_CFLAGS}"
+    "CXXFLAGS=${CONFIGURE_CFLAGS} -std=c++17"
     "CPPFLAGS=${CONFIGURE_CPPFLAGS}"
     "LDFLAGS=${CONFIGURE_LDFLAGS}"
     "PKG_CONFIG_LIBDIR=${INSTALL_PREFIX}/lib/pkgconfig:${INSTALL_PREFIX}/share/pkgconfig"
@@ -108,17 +108,41 @@ set(CMAKE_PLATFORM_ARGS
     -DPLATFORM=${IOS_PLATFORM}
     -DDEPLOYMENT_TARGET=${DEPLOYMENT_TARGET}
     -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
+    -DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}
+    -DCMAKE_FIND_ROOT_PATH=${INSTALL_PREFIX}
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_C_FLAGS=${COMMON_FLAGS}
     -DCMAKE_CXX_FLAGS=${COMMON_FLAGS}
-    -DCMAKE_FIND_ROOT_PATH=${INSTALL_PREFIX}
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    -DCMAKE_IGNORE_PATH="/usr;/usr/local;/opt/local;/opt/homebrew"
+    -DCMAKE_SYSTEM_IGNORE_PATH="/usr;/usr/local"
+    -DPKG_CONFIG_USE_CMAKE_PREFIX_PATH=TRUE
     -DOPENGL_INCLUDE_DIR=${GLES_INCLUDE}
     -DOPENGL_gl_LIBRARY=${GLES_LIBRARY}
     -DOPENGL_glx_LIBRARY=${GLES_LIBRARY}
+    -DMyGUI_LIBRARY=${INSTALL_PREFIX}/lib/libMyGUIEngineStatic.a
+    -DOPENAL_INCLUDE_DIR=${INSTALL_PREFIX}/include/AL/
+    -DBullet_INCLUDE_DIR=${INSTALL_PREFIX}/include/bullet/
+    -DJPEG_INCLUDE_DIR=${INSTALL_PREFIX}/include/
+    -DPNG_INCLUDE_DIR=${INSTALL_PREFIX}/include/
+    -DPNG_LIBRARY=${INSTALL_PREFIX}/lib/libpng16.a
+    -DCOLLADA_INCLUDE_DIR=${INSTALL_PREFIX}/include/collada-dom2.5/
+    -DCOLLADA_DOM_ROOT=${INSTALL_PREFIX}/include/collada-dom2.5/1.4/dom
+    -DICU_ROOT=${INSTALL_PREFIX}
+    -DICU_INCLUDE_DIR=${INSTALL_PREFIX}/include
+    -DBOOST_ROOT=${INSTALL_PREFIX}
+    -DBOOST_INCLUDEDIR=${INSTALL_PREFIX}/include
+    -DBOOST_LIBRARYDIR=${INSTALL_PREFIX}/lib
+    -DOSG_DIR=${INSTALL_PREFIX}
+    -DOPENSCENEGRAPH_ROOT=${INSTALL_PREFIX}
+    -DSDL2_DIR=${INSTALL_PREFIX}/lib/cmake/SDL2
+    -Dglslang_DIR=${INSTALL_PREFIX}/lib/cmake/glslang
+    -DIOS_DEPS_PREFIX=${INSTALL_PREFIX}
+    -DCMAKE_CXX_STANDARD=17
+    -DCMAKE_CXX_STANDARD_REQUIRED=ON
     -Wno-author
     -Wno-deprecated
 )
@@ -258,14 +282,19 @@ ExternalProject_Add(openal
 
 # ------------------- Boost -------------------
 ExternalProject_Add(boost
-    DEPENDS ios_toolchain
+    DEPENDS ios_toolchain zlib bzip2
     URL https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz
     SOURCE_DIR "${SRC_DIR}/boost"
     PATCH_COMMAND patch -p1 -t -N -d libs/system < ${PATCHES_DIR}/system.diff || true
+          COMMAND patch -p1 -t -N -d libs/regex < ${PATCHES_DIR}/regex.diff || true
     CONFIGURE_COMMAND ${ENV_CMAKE} <SOURCE_DIR> ${CMAKE_PLATFORM_ARGS}
-        -DBOOST_INCLUDE_LIBRARIES=filesystem\;program_options\;iostreams\;geometry\;system
+        "-DCMAKE_CXX_FLAGS=-I<SOURCE_DIR>/libs/core/include ${COMMON_FLAGS}"
+        -DBOOST_EXCLUDE_LIBRARIES=process
     BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
     INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
+            COMMAND ${IOS_RANLIB} ${INSTALL_PREFIX}/lib/libboost_filesystem.a
+            COMMAND ${IOS_RANLIB} ${INSTALL_PREFIX}/lib/libboost_program_options.a
+            COMMAND ${IOS_RANLIB} ${INSTALL_PREFIX}/lib/libboost_iostreams.a
 )
 
 # ------------------- libiconv -------------------
@@ -468,7 +497,7 @@ ExternalProject_Add(osg
         -DOSG_CPP_EXCEPTIONS_AVAILABLE=TRUE -DOSG_GL1_AVAILABLE=OFF -DOSG_GL2_AVAILABLE=OFF
         -DOSG_GL3_AVAILABLE=OFF -DOSG_GLES1_AVAILABLE=OFF -DOSG_GLES2_AVAILABLE=OFF -DOSG_GLES3_AVAILABLE=ON
         -DBUILD_OSG_APPLICATIONS=OFF -DBUILD_OSG_PLUGINS_BY_DEFAULT=OFF -DBUILD_OSG_DEPRECATED_SERIALIZERS=OFF
-        -DCMAKE_CXX_STANDARD=11 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+        -DCMAKE_CXX_STANDARD=11
         BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
         INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
         USES_TERMINAL_BUILD ON
@@ -496,7 +525,7 @@ ExternalProject_Add(openmw
         -DBUILD_WIZARD=0 -DBUILD_MYGUI_PLUGIN=0 -DBUILD_BULLETOBJECTTOOL=0
         -DOPENMW_USE_SYSTEM_SQLITE3=OFF -DOPENMW_USE_SYSTEM_YAML_CPP=OFF -DOPENMW_USE_SYSTEM_ICU=ON
         -DLUA_HAS_CUSTOM_ALLOCATOR=ON -DOSG_STATIC=TRUE
-        -DCMAKE_CXX_FLAGS=-std=gnu++20\ -I${INSTALL_PREFIX}/include/\ ${COMMON_FLAGS}
+        "-DCMAKE_CXX_FLAGS=-std=gnu++20 -I${INSTALL_PREFIX}/include/ ${COMMON_FLAGS}"
         BUILD_COMMAND ${ENV_CMAKE} --build . --config Release
         INSTALL_COMMAND ${ENV_CMAKE} --install . --config Release
         USES_TERMINAL_BUILD ON
