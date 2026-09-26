@@ -171,8 +171,122 @@ class VirtualThumbstick: UIView {
     }
 }
 
+class VirtualRightThumbstick: UIView {
+    private let baseView = UIView()
+    private let stickView = UIView()
+    private let radius: CGFloat = 60
+    var isLocked = true
+    private var currentDx: CGFloat = 0
+    private var currentDy: CGFloat = 0
+    private var displayLink: CADisplayLink?
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func setup() {
+        backgroundColor = .clear
+        baseView.frame = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+        baseView.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        baseView.layer.cornerRadius = radius
+        baseView.layer.borderWidth = 2
+        baseView.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        addSubview(baseView)
+        
+        stickView.frame = CGRect(x: 0, y: 0, width: 50, height: 50)
+        stickView.center = CGPoint(x: radius, y: radius)
+        stickView.backgroundColor = UIColor.white.withAlphaComponent(0.6)
+        stickView.layer.cornerRadius = 25
+        stickView.isUserInteractionEnabled = false
+        addSubview(stickView)
+        
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(longPress)
+        
+        displayLink = CADisplayLink(target: self, selector: #selector(updateMouseMotion))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+    
+    deinit {
+        displayLink?.invalidate()
+    }
+    
+    @objc private func updateMouseMotion() {
+        let deadzone: CGFloat = 5
+        let distance = sqrt(currentDx * currentDx + currentDy * currentDy)
+        if distance > deadzone {
+            let sensitivity: CGFloat = 0.25
+            let moveX = Int32(round(currentDx * sensitivity))
+            let moveY = Int32(round(currentDy * sensitivity))
+            if moveX != 0 || moveY != 0 {
+                sendNativeMouseMotion(dx: moveX, dy: moveY)
+            }
+        }
+    }
+    
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if isLocked { return }
+        guard let superview = superview else { return }
+        if gesture.state == .began {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.alpha = 0.8
+            }
+        } else if gesture.state == .changed {
+            self.center = gesture.location(in: superview)
+        } else if gesture.state == .ended || gesture.state == .cancelled {
+            UIView.animate(withDuration: 0.2) {
+                self.transform = .identity
+                self.alpha = 1.0
+            }
+            UserDefaults.standard.set(NSCoder.string(for: self.center), forKey: "OverlayRightThumbstickCenter_v7")
+        }
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        processTouch(touches.first)
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        processTouch(touches.first)
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        resetStick()
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        resetStick()
+    }
+    
+    private func processTouch(_ touch: UITouch?) {
+        guard let touch = touch else { return }
+        let location = touch.location(in: self)
+        let centerX = radius
+        let centerY = radius
+        let dx = location.x - centerX
+        let dy = location.y - centerY
+        let distance = sqrt(dx*dx + dy*dy)
+        let angle = atan2(dy, dx)
+        let cappedDistance = min(distance, radius)
+        stickView.center = CGPoint(x: centerX + cos(angle) * cappedDistance, y: centerY + sin(angle) * cappedDistance)
+        
+        currentDx = cos(angle) * cappedDistance
+        currentDy = sin(angle) * cappedDistance
+    }
+    
+    private func resetStick() {
+        stickView.center = CGPoint(x: radius, y: radius)
+        currentDx = 0
+        currentDy = 0
+    }
+}
+
 class GameplayOverlayController: UIViewController {
     var thumbstick: VirtualThumbstick!
+    var rightThumbstick: VirtualRightThumbstick!
     var customButtons: [UIButton] = []
     var isEditMode = false
     let toolbar = UIView()
@@ -180,6 +294,7 @@ class GameplayOverlayController: UIViewController {
     let logsBtn = UIButton(type: .system)
     let addBtn = UIButton(type: .system)
     let mouseIndicator = UIView()
+    let mouseCursorImageView = UIImageView()
     private var displayLink: CADisplayLink?
     private var layoutDone = false
 
@@ -198,6 +313,9 @@ class GameplayOverlayController: UIViewController {
         view.backgroundColor = .clear
         thumbstick = VirtualThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
         view.addSubview(thumbstick)
+        
+        rightThumbstick = VirtualRightThumbstick(frame: CGRect(x: 0, y: 0, width: 120, height: 120))
+        view.addSubview(rightThumbstick)
         
         // Toolbar container for easy grouping
         toolbar.frame = CGRect(x: 24, y: 24, width: 180, height: 44)
@@ -228,6 +346,17 @@ class GameplayOverlayController: UIViewController {
         mouseIndicator.backgroundColor = .systemRed
         toolbar.addSubview(mouseIndicator)
         
+        mouseCursorImageView.contentMode = .scaleAspectFit
+        if let path = Bundle.main.path(forResource: "pointer_arrow", ofType: "png", inDirectory: "OpenMWAssets") ?? Bundle.main.path(forResource: "pointer_arrow", ofType: "png") {
+            mouseCursorImageView.image = UIImage(contentsOfFile: path)
+        } else {
+            mouseCursorImageView.image = UIImage(named: "pointer_arrow")
+        }
+        mouseCursorImageView.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+        mouseCursorImageView.isHidden = true
+        mouseCursorImageView.isUserInteractionEnabled = false
+        view.addSubview(mouseCursorImageView)
+        
         setupDisplayLink()
         loadAllCustomButtons()
     }
@@ -240,6 +369,19 @@ class GameplayOverlayController: UIViewController {
     @objc private func updateMouseStatus() {
         let isShown = isMouseShown()
         mouseIndicator.backgroundColor = isShown ? .systemGreen : .systemRed
+        
+        if isShown {
+            let pos = getMousePosition()
+            mouseCursorImageView.isHidden = false
+            let rawSize = mouseCursorImageView.image?.size ?? CGSize(width: 24, height: 24)
+            let scale: CGFloat = 0.75
+            let width = rawSize.width * scale
+            let height = rawSize.height * scale
+            mouseCursorImageView.frame = CGRect(x: pos.x, y: pos.y, width: width, height: height)
+            view.bringSubviewToFront(mouseCursorImageView)
+        } else {
+            mouseCursorImageView.isHidden = true
+        }
     }
     
     deinit {
@@ -251,6 +393,7 @@ class GameplayOverlayController: UIViewController {
         lockBtn.setImage(UIImage(systemName: isEditMode ? "lock.open.fill" : "lock.fill"), for: .normal)
         lockBtn.tintColor = isEditMode ? .systemYellow : .white
         thumbstick.isLocked = !isEditMode
+        rightThumbstick.isLocked = !isEditMode
         for btn in customButtons {
             if let recognizers = btn.gestureRecognizers {
                 for r in recognizers { r.isEnabled = isEditMode }
@@ -269,11 +412,16 @@ class GameplayOverlayController: UIViewController {
             } else {
                 thumbstick.center = CGPoint(x: 80, y: screen.height - 80)
             }
+            if let savedRight = UserDefaults.standard.string(forKey: "OverlayRightThumbstickCenter_v7") {
+                rightThumbstick.center = NSCoder.cgPoint(for: savedRight)
+            } else {
+                rightThumbstick.center = CGPoint(x: screen.width - 80, y: screen.height - 80)
+            }
             if customButtons.isEmpty && UserDefaults.standard.array(forKey: "CustomButtonsList_v7") == nil {
-                createAndAddButton(name: "LCLICK", scancode: 1, at: CGPoint(x: screen.width - 150, y: screen.height - 130))
-                createAndAddButton(name: "RCLICK", scancode: 3, at: CGPoint(x: screen.width - 70, y: screen.height - 130))
-                createAndAddButton(name: "ESC", scancode: 41, at: CGPoint(x: screen.width - 120, y: screen.height - 60))
-                createAndAddButton(name: "ENT", scancode: 40, at: CGPoint(x: screen.width - 50, y: screen.height - 60))
+                createAndAddButton(name: "LCLICK", scancode: 1, at: CGPoint(x: screen.width - 150, y: screen.height - 180))
+                createAndAddButton(name: "RCLICK", scancode: 3, at: CGPoint(x: screen.width - 70, y: screen.height - 180))
+                createAndAddButton(name: "ESC", scancode: 41, at: CGPoint(x: screen.width - 120, y: screen.height - 230))
+                createAndAddButton(name: "ENT", scancode: 40, at: CGPoint(x: screen.width - 50, y: screen.height - 230))
             }
         }
     }
@@ -448,6 +596,19 @@ private func isMouseShown() -> Bool {
     return false
 }
 
+private func getMousePosition() -> CGPoint {
+    typealias GetMouseStateFn = @convention(c) (UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?) -> UInt32
+    guard let handle = dlopen(nil, RTLD_NOW) else { return .zero }
+    if let sym = dlsym(handle, "SDL_GetMouseState") {
+        let getMouseState = unsafeBitCast(sym, to: GetMouseStateFn.self)
+        var x: Int32 = 0
+        var y: Int32 = 0
+        _ = getMouseState(&x, &y)
+        return CGPoint(x: CGFloat(x), y: CGFloat(y))
+    }
+    return .zero
+}
+
 private func sendNativeKey(scancode: Int32, state: Int32) {
     typealias SendKeyFn = @convention(c) (Int32, Int32) -> Void
     guard let handle = dlopen(nil, RTLD_NOW) else {
@@ -474,6 +635,15 @@ private func sendNativeMouseButton(button: UInt8, state: UInt8) {
         _ = sendMouse(nil, 0, state, button)
     } else {
         print("Error: Could not find symbol SDL_SendMouseButton")
+    }
+}
+
+private func sendNativeMouseMotion(dx: Int32, dy: Int32) {
+    typealias SendMouseMotionFn = @convention(c) (UnsafeMutableRawPointer?, UInt32, Int32, Int32, Int32) -> Int32
+    guard let handle = dlopen(nil, RTLD_NOW) else { return }
+    if let sym = dlsym(handle, "SDL_SendMouseMotion") {
+        let sendMotion = unsafeBitCast(sym, to: SendMouseMotionFn.self)
+        _ = sendMotion(nil, 0, 1, dx, dy)
     }
 }
 
