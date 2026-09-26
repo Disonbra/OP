@@ -13,8 +13,6 @@
 		BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.62.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -29,8 +27,6 @@
 				BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */,
 				BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */,
 				BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */,
-				BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */,
-				BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -45,8 +41,6 @@
 		AA00000000000000000000A4 /* libopenal.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenal.1.dylib; sourceTree = "<group>"; };
 		AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libcollada-dom2.5-dp.0.dylib"; sourceTree = "<group>"; };
 		AA00000000000000000000A7 /* libbz2.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libbz2.1.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A8 /* libjpeg.62.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libjpeg.62.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A9 /* libz.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libz.1.dylib; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -105,8 +99,6 @@
 				AA00000000000000000000A4 /* libopenal.1.dylib */,
 				AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */,
 				AA00000000000000000000A7 /* libbz2.1.dylib */,
-				AA00000000000000000000A8 /* libjpeg.62.dylib */,
-				AA00000000000000000000A9 /* libz.1.dylib */,
 			);
 			path = EmbeddedLibs;
 			sourceTree = "<group>";

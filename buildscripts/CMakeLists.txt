@@ -531,3 +531,46 @@ ExternalProject_Add(openmw
         USES_TERMINAL_BUILD ON
         USES_TERMINAL_INSTALL ON
 )
+
+# ------------------- Stage App Libraries -------------------
+# Mirrors buildscripts/stage_app_libs.sh: copies engine dylibs and
+# resources out of the build tree into the iOS app's per-platform
+# embedded-library directories.
+#
+# Targets:
+#   stage_app_libs          - stage both device and simulator
+#   stage_app_libs_device   - stage device only
+#   stage_app_libs_sim      - stage simulator only
+#
+# Only the platform that matches IOS_PLATFORM gets an implicit dependency
+# on the `openmw` ExternalProject; the other platform must be built in a
+# separate configure pass (same limitation as the rest of this file).
+
+get_filename_component(REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(STAGE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/stage_app_libs.cmake")
+
+function(add_stage_target name platform dest)
+    add_custom_target(${name}
+            COMMAND ${CMAKE_COMMAND}
+            "-DREPO_DIR=${REPO_DIR}"
+            "-DWORK_DIR=${WORK_DIR}"
+            "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DPLATFORM=${platform}"
+            "-DDEST=${dest}"
+            "-DOPENMW_CONFIG=Release"
+            -P "${STAGE_SCRIPT}"
+            COMMENT "Staging ${platform} -> ${dest}"
+            USES_TERMINAL
+            VERBATIM
+    )
+    if("${platform}" STREQUAL "${IOS_PLATFORM}")
+        add_dependencies(${name} openmw)
+    endif()
+endfunction()
+
+add_stage_target(stage_app_libs_OS64           OS64           "${REPO_DIR}/iosApp/EmbeddedLibsDevice")
+add_stage_target(stage_app_libs_SIMULATORARM64 SIMULATORARM64 "${REPO_DIR}/iosApp/EmbeddedLibsSim")
+
+add_custom_target(stage_app_libs
+        DEPENDS stage_app_libs_${IOS_PLATFORM}
+)
