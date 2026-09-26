@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +59,7 @@ private fun readIniValues(): Map<String, List<Triple<String, Any, String?>>> {
         when {
             trimmedLine.startsWith("[") && trimmedLine.endsWith("]") -> {
                 currentSection = trimmedLine.substring(1, trimmedLine.length - 1).trim()
-                sections[currentSection!!] = mutableMapOf()
+                sections[currentSection] = mutableMapOf()
                 pendingComment = null
             }
             trimmedLine.startsWith("#") -> {
@@ -69,9 +70,9 @@ private fun readIniValues(): Map<String, List<Triple<String, Any, String?>>> {
                 val key = parts[0].trim()
                 val value = parts[1].trim()
                 if (currentSection != null) {
-                    sections[currentSection!!]!![key] = value
+                    sections[currentSection]!![key] = value
                     if (pendingComment != null) {
-                        comments["$currentSection:$key"] = pendingComment!!
+                        comments["$currentSection:$key"] = pendingComment
                     }
                 }
                 pendingComment = null
@@ -98,7 +99,7 @@ private fun readIniValues(): Map<String, List<Triple<String, Any, String?>>> {
 fun writeIniValue(section: String, key: String, value: Any) {
     val path = OpenMWPaths.SETTINGS_FILE
     val settingsText = readTextFile2(path)
-    if (settingsText.isEmpty() || settingsText.contains("length = ")) return 
+    if (settingsText.isEmpty()) return 
     
     val lines = settingsText.split(Regex("\\r?\\n")).toMutableList()
     var sectionFound = false
@@ -117,8 +118,10 @@ fun writeIniValue(section: String, key: String, value: Any) {
             }
         } else if (sectionFound) {
             val parts = line.split("=", limit = 2)
-            if (parts.size >= 1 && parts[0].trim() == key.trim()) {
-                lines[i] = "${key.trim()} = ${value.toString().trim()}"
+            if (parts.size == 2 && parts[0].trim() == key.trim()) {
+                // Preserve leading whitespace if any
+                val leadingWhitespace = lines[i].takeWhile { it.isWhitespace() }
+                lines[i] = "${leadingWhitespace}${key.trim()} = ${value.toString().trim()}"
                 keyFound = true
                 break
             }
@@ -126,6 +129,7 @@ fun writeIniValue(section: String, key: String, value: Any) {
     }
 
     if (!sectionFound) {
+        lines.add("")
         lines.add("[${section.trim()}]")
         lines.add("${key.trim()} = ${value.toString().trim()}")
     } else if (!keyFound) {
@@ -246,7 +250,7 @@ fun SettingRow(section: String, key: String, value: Any, comment: String?, onSav
             Spacer(Modifier.width(16.dp))
             when (value) {
                 is Boolean -> {
-                    var checked by remember(value) { mutableStateOf(value as Boolean) }
+                    var checked by remember(value) { mutableStateOf(value) }
                     Switch(
                         checked = checked,
                         onCheckedChange = {
@@ -257,19 +261,56 @@ fun SettingRow(section: String, key: String, value: Any, comment: String?, onSav
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF34C759))
                     )
                 }
+
                 is Int, is Float -> {
                     var textValue by remember(value) { mutableStateOf(value.toString()) }
+                    var isFocused by remember { mutableStateOf(false) }
+
+                    fun commit() {
+                        val finalValue = if (value is Int) {
+                            textValue.toIntOrNull() ?: 0
+                        } else {
+                            textValue.toFloatOrNull() ?: 0.0f
+                        }
+                        textValue = finalValue.toString() // normalize formatting
+                        // Only write if it actually changed
+                        if (finalValue.toString() != value.toString()) {
+                            writeIniValue(section, key, finalValue)
+                            onSave()
+                        }
+                    }
+
                     androidx.compose.foundation.text.BasicTextField(
                         value = textValue,
-                        onValueChange = { textValue = it },
-                        modifier = Modifier.width(80.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(8.dp),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF0A84FF), textAlign = androidx.compose.ui.text.style.TextAlign.End),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = if (value is Int) KeyboardType.Number else KeyboardType.Decimal),
+                        onValueChange = {
+                            val isInt = value is Int
+                            val isValid = if (isInt) {
+                                it.isEmpty() || it == "-" || it.toIntOrNull() != null
+                            } else {
+                                it.isEmpty() || it == "-" || it == "." || it == "-." || it.toFloatOrNull() != null
+                            }
+                            if (isValid) textValue = it
+                        },
+                        modifier = Modifier
+                            .width(80.dp)
+                            .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                            .padding(8.dp)
+                            .onFocusChanged { state ->
+                                // Save when focus was held and is now lost
+                                if (isFocused && !state.isFocused) commit()
+                                isFocused = state.isFocused
+                            },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF0A84FF),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done,
+                            keyboardType = if (value is Int) KeyboardType.Number else KeyboardType.Decimal
+                        ),
                         keyboardActions = KeyboardActions(onDone = {
-                            if (value is Int) writeIniValue(section, key, textValue.toIntOrNull() ?: 0)
-                            else writeIniValue(section, key, textValue.toFloatOrNull() ?: 0.0f)
-                            onSave()
-                            focusManager.clearFocus()
+                            commit()
+                            focusManager.clearFocus() // triggers onFocusChanged -> commit (guarded by the diff check)
                         }),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF0A84FF))
                     )
