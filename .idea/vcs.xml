@@ -2,5 +2,9 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ios_build/ios-cmake" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ios_build/src/bzip2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ios_build/src/luajit" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ios_build/src/luajit/dist/libluajit-v2.1" vcs="Git" />
   </component>
 </project>

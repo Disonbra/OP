@@ -8,13 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		BB00000000000000000000A1 /* OpenMWAssets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* OpenMWAssets */; };
-		BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* libopenmw.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.62.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A2 /* libopenmw.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* libopenmw.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A3 /* libSDL2-2.0.0.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* libSDL2-2.0.0.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A4 /* libopenal.1.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.1.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A7 /* libbz2.1.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.1.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A8 /* libjpeg.62.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.62.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A9 /* libz.1.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.1.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -24,13 +24,13 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */,
-				BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */,
-				BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */,
-				BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */,
-				BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */,
-				BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */,
-				BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */,
+				BB00000000000000000000A2 /* libopenmw.framework in Embed Frameworks */,
+				BB00000000000000000000A3 /* libSDL2-2.0.0.framework in Embed Frameworks */,
+				BB00000000000000000000A4 /* libopenal.1.framework in Embed Frameworks */,
+				BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.framework in Embed Frameworks */,
+				BB00000000000000000000A7 /* libbz2.1.framework in Embed Frameworks */,
+				BB00000000000000000000A8 /* libjpeg.62.framework in Embed Frameworks */,
+				BB00000000000000000000A9 /* libz.1.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -40,13 +40,13 @@
 /* Begin PBXFileReference section */
 		324D412C77799164947144CE /* Alpha3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Alpha3.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000A1 /* OpenMWAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenMWAssets; sourceTree = "<group>"; };
-		AA00000000000000000000A2 /* libopenmw.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenmw.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libSDL2-2.0.0.dylib"; sourceTree = "<group>"; };
-		AA00000000000000000000A4 /* libopenal.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenal.1.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libcollada-dom2.5-dp.0.dylib"; sourceTree = "<group>"; };
-		AA00000000000000000000A7 /* libbz2.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libbz2.1.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A8 /* libjpeg.62.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libjpeg.62.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A9 /* libz.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libz.1.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* libopenmw.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libopenmw.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A3 /* libSDL2-2.0.0.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "libSDL2-2.0.0.framework"; sourceTree = "<group>"; };
+		AA00000000000000000000A4 /* libopenal.1.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libopenal.1.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "libcollada-dom2.5-dp.0.framework"; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* libbz2.1.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libbz2.1.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A8 /* libjpeg.62.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libjpeg.62.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A9 /* libz.1.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libz.1.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -100,13 +100,13 @@
 		CC00000000000000000000A1 /* EmbeddedLibs */ = {
 			isa = PBXGroup;
 			children = (
-				AA00000000000000000000A2 /* libopenmw.dylib */,
-				AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */,
-				AA00000000000000000000A4 /* libopenal.1.dylib */,
-				AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */,
-				AA00000000000000000000A7 /* libbz2.1.dylib */,
-				AA00000000000000000000A8 /* libjpeg.62.dylib */,
-				AA00000000000000000000A9 /* libz.1.dylib */,
+				AA00000000000000000000A2 /* libopenmw.framework */,
+				AA00000000000000000000A3 /* libSDL2-2.0.0.framework */,
+				AA00000000000000000000A4 /* libopenal.1.framework */,
+				AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.framework */,
+				AA00000000000000000000A7 /* libbz2.1.framework */,
+				AA00000000000000000000A8 /* libjpeg.62.framework */,
+				AA00000000000000000000A9 /* libz.1.framework */,
 			);
 			path = EmbeddedLibs;
 			sourceTree = "<group>";
@@ -300,6 +300,8 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = "-Wl,-w";
+				OTHER_SWIFT_FLAGS = "-Xcc -DGLES_SILENCE_DEPRECATION";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -313,9 +315,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = J7W2R8H393;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = J7W2R8H393;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -325,9 +329,11 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Alpha3;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.role-playing-games";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
@@ -335,15 +341,15 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/iosApp/Frameworks",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
 					ComposeApp,
 				);
+				OTHER_SWIFT_FLAGS = "-Xcc -DGLES_SILENCE_DEPRECATION";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Alpha3 App Store Profile";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -356,9 +362,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = J7W2R8H393;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = J7W2R8H393;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -368,9 +376,11 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Alpha3;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.role-playing-games";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
@@ -378,15 +388,15 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/iosApp/Frameworks",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
 					ComposeApp,
 				);
+				OTHER_SWIFT_FLAGS = "-Xcc -DGLES_SILENCE_DEPRECATION";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Alpha3 App Store Profile";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -446,6 +456,8 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = "-Wl,-w";
+				OTHER_SWIFT_FLAGS = "-Xcc -DGLES_SILENCE_DEPRECATION";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;

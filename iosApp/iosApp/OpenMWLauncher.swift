@@ -214,7 +214,7 @@ enum OpenMWLauncher {
         var errorDescription: String? {
             switch self {
             case .assetsMissing: return "OpenMWAssets folder is missing from the app bundle."
-            case .dylibMissing: return "libopenmw.dylib is missing from the app's Frameworks."
+            case .dylibMissing: return "libopenmw framework is missing from the app's Frameworks."
             case .dlopenFailed(let msg): return "Could not load the engine: \(msg)"
             case .mainMissing: return "The engine library does not export main()."
             }
@@ -296,10 +296,19 @@ enum OpenMWLauncher {
 
         try initializeGLES()
 
+        let frameworkPath = fwPath + "/libopenmw.framework/libopenmw"
         let dylibPath = fwPath + "/libopenmw.dylib"
-        guard FileManager.default.fileExists(atPath: dylibPath) else { throw LaunchError.dylibMissing }
+        
+        let enginePath: String
+        if FileManager.default.fileExists(atPath: frameworkPath) {
+            enginePath = frameworkPath
+        } else if FileManager.default.fileExists(atPath: dylibPath) {
+            enginePath = dylibPath
+        } else {
+            throw LaunchError.dylibMissing
+        }
 
-        guard let handle = dlopen(dylibPath, RTLD_NOW) else {
+        guard let handle = dlopen(enginePath, RTLD_NOW) else {
             throw LaunchError.dlopenFailed(String(cString: dlerror()))
         }
         guard let sym = dlsym(handle, "main") else { throw LaunchError.mainMissing }

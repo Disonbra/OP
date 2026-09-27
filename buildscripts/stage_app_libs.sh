@@ -29,6 +29,47 @@ RESOURCES=(
     openmw.cfg
 )
 
+package_as_framework() {
+    local dylib_path="$1"
+    local dest_dir="$2"
+    local base_name="$(basename "$dylib_path")"
+    local fw_name="${base_name%.dylib}"
+    
+    local fw_dir="${dest_dir}/${fw_name}.framework"
+    mkdir -p "${fw_dir}"
+    
+    # Copy the file into the framework
+    cp -L "${dylib_path}" "${fw_dir}/${fw_name}"
+    
+    # Update its own id
+    install_name_tool -id "@rpath/${fw_name}.framework/${fw_name}" "${fw_dir}/${fw_name}" 2>/dev/null || true
+    
+    cat > "${fw_dir}/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>${fw_name}</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.openmw.${fw_name//./}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>${fw_name}</string>
+    <key>CFBundlePackageType</key>
+    <string>FMWK</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>MinimumOSVersion</key>
+    <string>15.6</string>
+</dict>
+</plist>
+PLIST
+}
+
 stage_platform() {
     local platform="$1" dest="$2" openmw_config="$3"
     local prefix="${WORK_DIR}/ios-libs/${platform}"
@@ -36,12 +77,14 @@ stage_platform() {
     mkdir -p "${dest}"
     mkdir -p "${assets_dest}"
 
+    local fw_names=()
     for lib in "${DYLIBS[@]}"; do
         if [ ! -e "${prefix}/lib/${lib}" ]; then
             echo "MISSING: ${prefix}/lib/${lib} (run build_ios.sh first)" >&2
             exit 1
         fi
-        cp -L "${prefix}/lib/${lib}" "${dest}/${lib}"
+        package_as_framework "${prefix}/lib/${lib}" "${dest}"
+        fw_names+=("${lib%.dylib}")
     done
 
     # Copy resources to OpenMWAssets
@@ -88,10 +131,7 @@ stage_platform() {
         sed -i '' 's|data=../Resources/resources/vfs-mw|data=resources/vfs-mw|g' "${assets_dest}/openmw.cfg"
     fi
 
-    # SDL's debug build names itself libSDL2-2.0d; normalise the id so it
-    # matches libopenmw's load command.
-    install_name_tool -id @rpath/libSDL2-2.0.0.dylib "${dest}/libSDL2-2.0.0.dylib"
-    codesign -f -s - "${dest}/libSDL2-2.0.0.dylib" 2>/dev/null || true
+
 
     # libopenmw comes from the engine build dir (the buildscript does not
     # install it into the prefix).
@@ -112,7 +152,22 @@ stage_platform() {
         echo "MISSING: libopenmw.dylib for ${platform} (build OpenMW first)" >&2
         exit 1
     fi
-    cp -L "${openmw}" "${dest}/libopenmw.dylib"
+    package_as_framework "${openmw}" "${dest}"
+    fw_names+=("libopenmw")
+    
+    # Fix up cross-references
+    for fw in "${fw_names[@]}"; do
+        local target_bin="${dest}/${fw}.framework/${fw}"
+        local linked_libs=$(otool -L "${target_bin}" | awk 'NR>1 {print $1}')
+        for linked in $linked_libs; do
+            for dep_fw in "${fw_names[@]}"; do
+                if [[ "${linked}" == *"${dep_fw}.dylib" ]]; then
+                    install_name_tool -change "${linked}" "@rpath/${dep_fw}.framework/${dep_fw}" "${target_bin}" 2>/dev/null || true
+                fi
+            done
+        done
+        codesign -f -s - "${target_bin}" 2>/dev/null || true
+    done
     echo "Staged ${platform} -> ${dest}"
 }
 

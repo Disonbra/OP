@@ -4,64 +4,19 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	
-	<!-- REQUIRED: Bundle Identifier -->
-	<key>CFBundleIdentifier</key>
-	<string>org.alpha3.launcher.Alpha3</string>
-	
-	<!-- REQUIRED: Bundle Name -->
-	<key>CFBundleName</key>
-	<string>Alpha3</string>
-	
-	<!-- REQUIRED: Bundle Display Name (shows under app icon) -->
-	<key>CFBundleDisplayName</key>
-	<string>Alpha3</string>
-	
-	<!-- REQUIRED: Bundle Version -->
-	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
-	
-	<!-- REQUIRED: Build Version -->
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	
-	<!-- REQUIRED: Minimum iOS Version -->
-	<key>MinimumOSVersion</key>
-	<string>13.0</string>
-	
-	<!-- REQUIRED: App supports multiple orientations -->
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	
-	<!-- IMPORTANT: For dynamic libraries -->
 	<key>LSEnvironment</key>
 	<dict>
 		<key>DYLD_LIBRARY_PATH</key>
 		<string>@executable_path/Frameworks</string>
 	</dict>
-	
-	<!-- Optional but recommended: App Transport Security -->
+	<key>MinimumOSVersion</key>
+	<string>15.6</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	
-	<!-- If you need file access -->
 	<key>UIFileSharingEnabled</key>
-	<true/>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 </dict>
 </plist>
