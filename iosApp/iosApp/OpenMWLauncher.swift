@@ -214,7 +214,7 @@ enum OpenMWLauncher {
         var errorDescription: String? {
             switch self {
             case .assetsMissing: return "OpenMWAssets folder is missing from the app bundle."
-            case .dylibMissing: return "libopenmw.dylib is missing from the app's Frameworks."
+            case .dylibMissing: return "libopenmw.framework is missing from the app's Frameworks."
             case .dlopenFailed(let msg): return "Could not load the engine: \(msg)"
             case .mainMissing: return "The engine library does not export main()."
             }
@@ -268,7 +268,7 @@ enum OpenMWLauncher {
         print("-----------------------")
     }
 
-    /// Loads libopenmw.dylib and calls its `main`. This call blocks and takes
+    /// Loads libopenmw.framework and calls its `main`. This call blocks and takes
     /// over the process (SDL creates its own window on top of the launcher),
     /// so it must run on the main thread and is effectively one-way.
     static func launch(game: GameData) throws -> Never {
@@ -296,10 +296,10 @@ enum OpenMWLauncher {
 
         try initializeGLES()
 
-        let dylibPath = fwPath + "/libopenmw.dylib"
-        guard FileManager.default.fileExists(atPath: dylibPath) else { throw LaunchError.dylibMissing }
+        let frameworkPath = fwPath + "/libopenmw.framework/libopenmw"
+        guard FileManager.default.fileExists(atPath: frameworkPath) else { throw LaunchError.dylibMissing }
 
-        guard let handle = dlopen(dylibPath, RTLD_NOW) else {
+        guard let handle = dlopen(frameworkPath, RTLD_NOW) else {
             throw LaunchError.dlopenFailed(String(cString: dlerror()))
         }
         guard let sym = dlsym(handle, "main") else { throw LaunchError.mainMissing }

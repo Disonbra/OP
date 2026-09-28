@@ -8,13 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		BB00000000000000000000A1 /* OpenMWAssets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* OpenMWAssets */; };
-		BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* libopenmw.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.62.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		BB00000000000000000000A2 /* libopenmw.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* libopenmw.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A3 /* libSDL2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* libSDL2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A4 /* libopenal.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* libopenal.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A6 /* libcollada.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* libcollada.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A7 /* libbz2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* libbz2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A8 /* libjpeg.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* libjpeg.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BB00000000000000000000A9 /* libz.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* libz.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -24,13 +24,13 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				BB00000000000000000000A2 /* libopenmw.dylib in Embed Frameworks */,
-				BB00000000000000000000A3 /* libSDL2-2.0.0.dylib in Embed Frameworks */,
-				BB00000000000000000000A4 /* libopenal.1.dylib in Embed Frameworks */,
-				BB00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib in Embed Frameworks */,
-				BB00000000000000000000A7 /* libbz2.1.dylib in Embed Frameworks */,
-				BB00000000000000000000A8 /* libjpeg.62.dylib in Embed Frameworks */,
-				BB00000000000000000000A9 /* libz.1.dylib in Embed Frameworks */,
+				BB00000000000000000000A2 /* libopenmw.framework in Embed Frameworks */,
+				BB00000000000000000000A3 /* libSDL2.framework in Embed Frameworks */,
+				BB00000000000000000000A4 /* libopenal.framework in Embed Frameworks */,
+				BB00000000000000000000A6 /* libcollada.framework in Embed Frameworks */,
+				BB00000000000000000000A7 /* libbz2.framework in Embed Frameworks */,
+				BB00000000000000000000A8 /* libjpeg.framework in Embed Frameworks */,
+				BB00000000000000000000A9 /* libz.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -40,13 +40,13 @@
 /* Begin PBXFileReference section */
 		324D412C77799164947144CE /* Alpha3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Alpha3.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000A1 /* OpenMWAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = OpenMWAssets; sourceTree = "<group>"; };
-		AA00000000000000000000A2 /* libopenmw.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenmw.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libSDL2-2.0.0.dylib"; sourceTree = "<group>"; };
-		AA00000000000000000000A4 /* libopenal.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libopenal.1.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = "libcollada-dom2.5-dp.0.dylib"; sourceTree = "<group>"; };
-		AA00000000000000000000A7 /* libbz2.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libbz2.1.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A8 /* libjpeg.62.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libjpeg.62.dylib; sourceTree = "<group>"; };
-		AA00000000000000000000A9 /* libz.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libz.1.dylib; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* libopenmw.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libopenmw.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A3 /* libSDL2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libSDL2.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A4 /* libopenal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libopenal.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A6 /* libcollada.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libcollada.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* libbz2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libbz2.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A8 /* libjpeg.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libjpeg.framework; sourceTree = "<group>"; };
+		AA00000000000000000000A9 /* libz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = libz.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -100,13 +100,13 @@
 		CC00000000000000000000A1 /* EmbeddedLibs */ = {
 			isa = PBXGroup;
 			children = (
-				AA00000000000000000000A2 /* libopenmw.dylib */,
-				AA00000000000000000000A3 /* libSDL2-2.0.0.dylib */,
-				AA00000000000000000000A4 /* libopenal.1.dylib */,
-				AA00000000000000000000A6 /* libcollada-dom2.5-dp.0.dylib */,
-				AA00000000000000000000A7 /* libbz2.1.dylib */,
-				AA00000000000000000000A8 /* libjpeg.62.dylib */,
-				AA00000000000000000000A9 /* libz.1.dylib */,
+				AA00000000000000000000A2 /* libopenmw.framework */,
+				AA00000000000000000000A3 /* libSDL2.framework */,
+				AA00000000000000000000A4 /* libopenal.framework */,
+				AA00000000000000000000A6 /* libcollada.framework */,
+				AA00000000000000000000A7 /* libbz2.framework */,
+				AA00000000000000000000A8 /* libjpeg.framework */,
+				AA00000000000000000000A9 /* libz.framework */,
 			);
 			path = EmbeddedLibs;
 			sourceTree = "<group>";

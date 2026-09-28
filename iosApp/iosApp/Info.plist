@@ -16,6 +16,10 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app uses Bluetooth to discover and connect to wireless game controllers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app uses Bluetooth to discover and connect to wireless game controllers.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 </dict>
