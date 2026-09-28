@@ -73,7 +73,7 @@ struct LogOverlayView: View {
                         }
                     }
                 }
-                .onChange(of: logManager.logs.count) { count in
+                .onChangeCompat(of: logManager.logs.count) { count in
                     if count > 0 {
                         proxy.scrollTo(count - 1, anchor: .bottom)
                     }
@@ -98,6 +98,19 @@ extension View {
                 LogOverlayView(isPresented: isPresented)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(999)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    func onChangeCompat<V: Equatable>(of value: V, perform action: @escaping (V) -> Void) -> some View {
+        if #available(iOS 17.0, *) {
+            self.onChange(of: value) { _, newValue in
+                action(newValue)
+            }
+        } else {
+            self.onChange(of: value) { newValue in
+                action(newValue)
             }
         }
     }

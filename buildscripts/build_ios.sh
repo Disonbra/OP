@@ -26,12 +26,12 @@ SIM_PREFIX="${PREFIX}/SIMULATORARM64"
 MARKERS_DIR="${PREFIX}/markers"
 BUILD_JOBS=$(sysctl -n hw.logicalcpu)
 
-DEPLOYMENT_TARGET="26.2"
-COMMON_FLAGS="-O3 -fPIC -stdlib=libc++"
+DEPLOYMENT_TARGET="16.4"
+COMMON_FLAGS="-O3 -fPIC -stdlib=libc++ -w"
+BUILD_SIMULATOR="${BUILD_SIMULATOR:-true}"  # Set to true if you also want simulator builds
 
 LIBJPEG_TURBO_VERSION=3.1.0
 LIBPNG_VERSION=1.6.48
-BROTLI_VERSION=1.2.0
 FREETYPE2_VERSION=2.14.1
 OPENAL_VERSION=1.24.3
 BOOST_VERSION=1.88.0
@@ -45,10 +45,7 @@ MYGUI_VERSION=3.4.3
 COLLADA_DOM_VERSION=2.5.0
 OSG_VERSION=638f0a1e73687633fd99bf110d04226e78ff69c6
 LZ4_VERSION=1.10.0
-LUA_VERSION=5.1.5
-LUAJIT_VERSION=2.1.ROLLING
 OPENMW_VERSION=09243a3aa57f903ae69e541fc4d81617c8c4b15a
-RECAST_VERSION=455a019e7aef99354ac3020f04c1fe3541aa4d19
 XZ_VERSION=5.8.2
 
 mkdir -p "${SRC_DIR}" "${PREFIX}" "${MARKERS_DIR}"
@@ -159,11 +156,13 @@ build_configure_dual_platform() {
     fi
     
     # Build for simulator
-    if skip_if_installed "${name}_sim"; then true; else
-        cd "${src_dir}"
-        build_configure_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${configure_args[@]}"
+    if [ "${BUILD_SIMULATOR}" = "true" ]; then
+        if skip_if_installed "${name}_sim"; then true; else
+            cd "${src_dir}"
+            build_configure_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${configure_args[@]}"
 
-        mark_as_installed "${name}_sim"
+            mark_as_installed "${name}_sim"
+        fi
     fi
 }
 
@@ -191,19 +190,21 @@ build_dual_platform() {
     fi
     
     
-    if skip_if_installed "${name}_sim"; then true; else
-        echo "=== Building ${name} for simulator ==="
-        cd "${src_dir}"
-        
-        # Process arguments for simulator
-        local sim_args=()
-        for arg in "${extra_args[@]}"; do
-            sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
-        done
-       
-        build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${sim_args[@]}"
-        
-        mark_as_installed "${name}_sim"
+    if [ "${BUILD_SIMULATOR}" = "true" ]; then
+        if skip_if_installed "${name}_sim"; then true; else
+            echo "=== Building ${name} for simulator ==="
+            cd "${src_dir}"
+
+            # Process arguments for simulator
+            local sim_args=()
+            for arg in "${extra_args[@]}"; do
+                sim_args+=("${arg//\$\{PLATFORM_PREFIX\}/${PREFIX}/SIMULATORARM64}")
+            done
+
+            build_platform_lib "${name}" "SIMULATORARM64" "${src_dir}" "${sim_args[@]}"
+
+            mark_as_installed "${name}_sim"
+        fi
     fi
 }
 
@@ -222,8 +223,14 @@ build_platform_lib() {
     export PKG_CONFIG_PATH="${install_prefix}/lib/pkgconfig:${install_prefix}/share/pkgconfig"
     export PKG_CONFIG_SYSROOT_DIR="${install_prefix}"
 
-    local sdk_name="$([[ "${platform}" == "OS64" ]] && echo iphoneos || echo iphonesimulator)"
-    local sdk_path=$(xcrun --sdk "${sdk_name}" --show-sdk-path)
+    local sdk_name
+    if [ "${platform}" = "OS64" ]; then
+        sdk_name="iphoneos"
+    else
+        sdk_name="iphonesimulator"
+    fi
+    local sdk_path
+    sdk_path=$(xcrun --sdk "${sdk_name}" --show-sdk-path)
 
     local gles_include="${sdk_path}/System/Library/Frameworks"
     local gles_library="${sdk_path}/System/Library/Frameworks/OpenGLES.framework"
@@ -316,27 +323,37 @@ if skip_if_installed "bzip2"; then true; else
 fi
 
 # ------------------- Luajit -------------------
-if skip_if_installed "luajit"; then true; else
+build_luajit_platform() {
+    local platform_tag="$1"
+    if skip_if_installed "luajit_${platform_tag}"; then return 0; fi
+
     cd "${SRC_DIR}"
     if [ ! -d "luajit" ]; then
         echo "=== Downloading and building luajit ==="
         git clone https://github.com/mpvkit/libluajit-build.git luajit
     fi
     
-    cd luajit
+    cd "${SRC_DIR}/luajit"
     make build platform=ios,isimulator XCFLAGS+="-DLUAJIT_ENABLE_GC64"
     
-    # Copy include files to both device and simulator prefixes
-    echo "=== Copying Luajit headers ==="
-    cp -Rf dist/release/libluajit/include/luajit-2.1/* "${DEVICE_PREFIX}/include/"
-    cp -Rf dist/release/libluajit/include/luajit-2.1/* "${SIM_PREFIX}/include/"
+    if [ "${platform_tag}" = "device" ]; then
+        echo "=== Copying Luajit headers & lib for device ==="
+        mkdir -p "${DEVICE_PREFIX}/include" "${DEVICE_PREFIX}/lib"
+        cp -Rf dist/release/libluajit/include/luajit-2.1/* "${DEVICE_PREFIX}/include/"
+        cp -f dist/release/libluajit/lib/ios/thin/arm64/lib/libluajit.a "${DEVICE_PREFIX}/lib/"
+    else
+        echo "=== Copying Luajit headers & lib for simulator ==="
+        mkdir -p "${SIM_PREFIX}/include" "${SIM_PREFIX}/lib"
+        cp -Rf dist/release/libluajit/include/luajit-2.1/* "${SIM_PREFIX}/include/"
+        cp -f dist/release/libluajit/lib/isimulator/thin/arm64/lib/libluajit.a "${SIM_PREFIX}/lib/"
+    fi
     
-    # Copy libraries to respective prefixes
-    echo "=== Copying Luajit libraries ==="
-    cp -f dist/release/libluajit/lib/ios/thin/arm64/lib/libluajit.a "${DEVICE_PREFIX}/lib/"
-    cp -f dist/release/libluajit/lib/isimulator/thin/arm64/lib/libluajit.a "${SIM_PREFIX}/lib/"
-    
-    mark_as_installed "luajit"
+    mark_as_installed "luajit_${platform_tag}"
+}
+
+build_luajit_platform "device"
+if [ "${BUILD_SIMULATOR}" = "true" ]; then
+    build_luajit_platform "sim"
 fi
 
 # ------------------- Zlib -------------------
@@ -433,15 +450,17 @@ if skip_if_installed "boost"; then true; else
         echo "=== Downloading and building boost ==="
         wget -c https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz -O - | tar -xz
         
-        patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < ${PATCHES_DIR}/system.diff
+        patch -d "${SRC_DIR}"/boost-${BOOST_VERSION}/libs/system/ -p1 -t -N < "${PATCHES_DIR}"/system.diff
         #patch -d ${SRC_DIR}/boost-${BOOST_VERSION}/libs/regex/ -p1 -t -N < ${PATCHES_DIR}/regex.diff
     fi
 
     build_dual_platform "boost" "${SRC_DIR}/boost-${BOOST_VERSION}" \
         -DBOOST_INCLUDE_LIBRARIES="filesystem;program_options;iostreams;geometry;system"
 
-    xcrun ranlib ${PREFIX}/OS64/lib/libboost_{filesystem,program_options,iostreams}.a
-    xcrun ranlib ${PREFIX}/SIMULATORARM64/lib/libboost_{filesystem,program_options,iostreams}.a
+    xcrun ranlib "${PREFIX}"/OS64/lib/libboost_{filesystem,program_options,iostreams}.a
+    if [ "${BUILD_SIMULATOR}" = "true" ]; then
+        xcrun ranlib "${PREFIX}"/SIMULATORARM64/lib/libboost_{filesystem,program_options,iostreams}.a
+    fi
 fi
 
 # ------------------- Build libiconv -------------------
@@ -495,11 +514,7 @@ if skip_if_installed "ffmpeg"; then true; else
     fi
     
     # Build iconv if not already built
-    if skip_if_installed "iconv"; then true; else
-        echo "=== Building libiconv ==="
-        build_iconv
-        mark_as_installed "iconv"
-    fi
+    build_iconv
     
     build_configure_dual_platform "ffmpeg" "${SRC_DIR}/ffmpeg-${FFMPEG_VERSION}" \
         --arch=arm64 \
@@ -523,7 +538,7 @@ if skip_if_installed "sdl2"; then true; else
     if [ ! -d "SDL2-${SDL2_VERSION}" ]; then
         echo "=== Downloading and building SDL2 ==="
         wget -c https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-${SDL2_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/SDL2-${SDL2_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/sdl2_ios_scene.patch
+        patch -d "${SRC_DIR}"/SDL2-${SDL2_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/sdl2_ios_scene.patch
     fi
 
     build_dual_platform "sdl2" "${SRC_DIR}/SDL2-${SDL2_VERSION}" \
@@ -615,9 +630,9 @@ if skip_if_installed "collada"; then true; else
         wget -c https://github.com/rdiankov/collada-dom/archive/v${COLLADA_DOM_VERSION}.tar.gz -O - | tar -xz
         
         # Create backup with .bak extension
-        sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/include/dae.h
-        sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
-        sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' ${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
+        sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' "${SRC_DIR}"/collada-dom-${COLLADA_DOM_VERSION}/dom/include/dae.h
+        sed -i '.bak' 's|#include <boost/filesystem/convenience.hpp>|#include <boost/filesystem.hpp>|g' "${SRC_DIR}"/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
+        sed -i '.bak' 's|std::string dir = archivePath.branch_path().string();|std::string dir = archivePath.parent_path().string();|g' "${SRC_DIR}"/collada-dom-${COLLADA_DOM_VERSION}/dom/src/dae/daeUtils.cpp
     fi
 
     #rm -rf "${SRC_DIR}/collada-dom-${COLLADA_DOM_VERSION}/build_collada_"*
@@ -630,42 +645,56 @@ if skip_if_installed "collada"; then true; else
 fi
 
 # ------------------- glslang -------------------
-if skip_if_installed "glslang"; then true; else
+if [ ! -d "${SRC_DIR}/glslang" ]; then
     cd "${SRC_DIR}"
-    if [ ! -d "glslang" ]; then
-        echo "=== Cloning glslang ==="
-        git clone https://github.com/KhronosGroup/glslang.git
-    fi
+    echo "=== Cloning glslang ==="
+    git clone https://github.com/KhronosGroup/glslang.git
     cd "${SRC_DIR}/glslang"
+    # shellcheck disable=SC1001
     sed -i \u0027\u0027 -e "s/3.22.1/3.19.6/g" CMakeLists.txt
+    # shellcheck disable=SC1001
     sed -i \u0027\u0027 -e "s/CMAKE_CXX_STANDARD 23/CMAKE_CXX_STANDARD 17/g" CMakeLists.txt
+fi
 
-    for platform in "OS64" "SIMULATORARM64"; do
-        cd "${SRC_DIR}/glslang"
-        build_platform_lib "glslang" "$platform" "${SRC_DIR}/glslang" \
-            -DBUILD_EXTERNAL=OFF \
-            -DENABLE_OPT=OFF \
-            -DENABLE_PCH=OFF \
-            -DENABLE_GLSLANG_BINARIES=OFF
+build_glslang_for_platform() {
+    local platform="$1"
+    local tag="$2"
 
-        install_prefix="${PREFIX}/${platform}"
-        build_dir="${SRC_DIR}/glslang/build_glslang_${platform}"
-        sdk_suffix="$([[ "${platform}" == "OS64" ]] && echo "iphoneos" || echo "iphonesimulator")"
+    if skip_if_installed "glslang_${tag}"; then
+        return 0
+    fi
 
-        echo "=== Manually installing glslang for ${platform} ==="
-        mkdir -p "${install_prefix}/include/glslang"
-        mkdir -p "${install_prefix}/lib"
+    echo "=== Building glslang for ${platform} ==="
+    cd "${SRC_DIR}/glslang"
+    build_platform_lib "glslang" "$platform" "${SRC_DIR}/glslang" \
+        -DBUILD_EXTERNAL=OFF \
+        -DENABLE_OPT=OFF \
+        -DENABLE_PCH=OFF \
+        -DENABLE_GLSLANG_BINARIES=OFF
 
-        cp -r "${SRC_DIR}/glslang/glslang" "${install_prefix}/include/"
-        cp -r "${SRC_DIR}/glslang/SPIRV" "${install_prefix}/include/glslang/"
+    install_prefix="${PREFIX}/${platform}"
+    build_dir="${SRC_DIR}/glslang/build_glslang_${platform}"
+    sdk_suffix="$([[ "${platform}" == "OS64" ]] && echo "iphoneos" || echo "iphonesimulator")"
 
-        cp "${build_dir}/SPIRV/Release-${sdk_suffix}/libSPIRV.a" "${install_prefix}/lib/"
-        cp "${build_dir}/glslang/Release-${sdk_suffix}/libglslang.a" "${install_prefix}/lib/"
-        cp "${build_dir}/glslang/Release-${sdk_suffix}/libMachineIndependent.a" "${install_prefix}/lib/"
-        cp "${build_dir}/glslang/Release-${sdk_suffix}/libGenericCodeGen.a" "${install_prefix}/lib/"
-        cp "${build_dir}/glslang/OSDependent/Unix/Release-${sdk_suffix}/libOSDependent.a" "${install_prefix}/lib/"
-    done
-    mark_as_installed "glslang"
+    echo "=== Manually installing glslang for ${platform} ==="
+    mkdir -p "${install_prefix}/include/glslang"
+    mkdir -p "${install_prefix}/lib"
+
+    cp -r "${SRC_DIR}/glslang/glslang" "${install_prefix}/include/"
+    cp -r "${SRC_DIR}/glslang/SPIRV" "${install_prefix}/include/glslang/"
+
+    cp "${build_dir}/SPIRV/Release-${sdk_suffix}/libSPIRV.a" "${install_prefix}/lib/"
+    cp "${build_dir}/glslang/Release-${sdk_suffix}/libglslang.a" "${install_prefix}/lib/"
+    cp "${build_dir}/glslang/Release-${sdk_suffix}/libMachineIndependent.a" "${install_prefix}/lib/"
+    cp "${build_dir}/glslang/Release-${sdk_suffix}/libGenericCodeGen.a" "${install_prefix}/lib/"
+    cp "${build_dir}/glslang/OSDependent/Unix/Release-${sdk_suffix}/libOSDependent.a" "${install_prefix}/lib/"
+
+    mark_as_installed "glslang_${tag}"
+}
+
+build_glslang_for_platform "OS64" "device"
+if [ "${BUILD_SIMULATOR}" = "true" ]; then
+    build_glslang_for_platform "SIMULATORARM64" "sim"
 fi
 
 # ------------------- spirv-cross -------------------
@@ -689,18 +718,18 @@ if skip_if_installed "osg"; then true; else
     if [ ! -d "osg-${OSG_VERSION}" ]; then
         echo "=== Downloading and building osg ==="
         wget -c https://github.com/sisah2/osg/archive/${OSG_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/osg_iOS.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/remove-lib-prefix-from-plugins.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/fix-freetype-include-dirs.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0001-Replace-Atomic-impl-with-std-atomic.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0002-BufferObject-make-numClients-atomic.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0004-IncrementalCompileOperation-wrap-some-stuff-in-atomi.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/force-add-plugins.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/dae_collada.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/enable-some-features.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OSGtextures.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/msaa+clean-log.patch
-        patch -d ${SRC_DIR}/osg-${OSG_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0005-CullSettings-make-inheritanceMask-atomic-to-silence-.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/osg_iOS.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/remove-lib-prefix-from-plugins.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/fix-freetype-include-dirs.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0001-Replace-Atomic-impl-with-std-atomic.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0002-BufferObject-make-numClients-atomic.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0004-IncrementalCompileOperation-wrap-some-stuff-in-atomi.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/force-add-plugins.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/dae_collada.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/enable-some-features.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/OSGtextures.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/msaa+clean-log.patch
+        patch -d "${SRC_DIR}"/osg-${OSG_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0005-CullSettings-make-inheritanceMask-atomic-to-silence-.patch
     fi
 
     build_dual_platform "osg" "${SRC_DIR}/osg-${OSG_VERSION}" \
@@ -737,17 +766,17 @@ if skip_if_installed "openmw"; then true; else
     if [ ! -d "openmw-${OPENMW_VERSION}" ]; then
         echo "=== Downloading and building OpenMW ==="
         wget -c https://github.com/sisah2/openmw/archive/${OPENMW_VERSION}.tar.gz -O - | tar -xz
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/OpenMW_iOS_2.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0001-loadingscreen-disable-for-now.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/0009-windowmanagerimp-always-show-mouse-when-possible-pat.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/ktx.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/base-changes.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/allow-more-es-versions.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/GLES-3-OMW.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/textures.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/features.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/misc.patch
-        patch -d ${SRC_DIR}/openmw-${OPENMW_VERSION}/ -p1 -t -N < ${PATCHES_DIR}/iosGLESomw.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/OpenMW_iOS_2.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0001-loadingscreen-disable-for-now.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/0009-windowmanagerimp-always-show-mouse-when-possible-pat.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/ktx.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/base-changes.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/allow-more-es-versions.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/GLES-3-OMW.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/textures.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/features.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/misc.patch
+        patch -d "${SRC_DIR}"/openmw-${OPENMW_VERSION}/ -p1 -t -N < "${PATCHES_DIR}"/iosGLESomw.patch
     fi
 
     build_dual_platform "openmw" "${SRC_DIR}/openmw-${OPENMW_VERSION}" \

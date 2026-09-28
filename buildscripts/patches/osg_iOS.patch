@@ -12,27 +12,23 @@ Subject: [PATCH] osg_iOS
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -65,12 +65,19 @@
+@@ -65,12 +65,15 @@
      IF(OSG_BUILD_PLATFORM_IPHONE)
  
          # set sdk and min versions
 -        SET (IPHONE_SDKVER "10.2" CACHE STRING "IOS SDK-Version")
 -        SET (IPHONE_VERSION_MIN "7.0" CACHE STRING "IOS minimum os version, use 7.0 or greater to get 64bit support")
-+        SET (IPHONE_SDKVER "26.2" CACHE STRING "IOS SDK-Version")
-+        SET (IPHONE_VERSION_MIN "13" CACHE STRING "IOS minimum os version, use 7.0 or greater to get 64bit support")
++        SET (IPHONE_SDKVER "16.4" CACHE STRING "IOS SDK-Version")
++        SET (IPHONE_VERSION_MIN "16.4" CACHE STRING "IOS minimum os version, use 7.0 or greater to get 64bit support")
  
 -        # get full path to sdk from requested versions
 -        SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
 -        SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneOS${IPHONE_SDKVER}.sdk")
-+        # get full path to sdk from requested versions; honour the ios-cmake
-+        # toolchain's PLATFORM so simulator builds use the simulator SDK
-+        EXECUTE_PROCESS(COMMAND xcode-select -p OUTPUT_VARIABLE OSG_XCODE_DEVELOPER_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
++        # get full path to sdk dynamically using xcrun so simulator and device builds use installed SDK
 +        IF(DEFINED PLATFORM AND PLATFORM MATCHES "SIMULATOR")
-+            SET (IPHONE_DEVROOT "${OSG_XCODE_DEVELOPER_DIR}/Platforms/iPhoneSimulator.platform/Developer")
-+            SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneSimulator${IPHONE_SDKVER}.sdk")
++            EXECUTE_PROCESS(COMMAND xcrun --sdk iphonesimulator --show-sdk-path OUTPUT_VARIABLE IPHONE_SDKROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
 +        ELSE()
-+            SET (IPHONE_DEVROOT "${OSG_XCODE_DEVELOPER_DIR}/Platforms/iPhoneOS.platform/Developer")
-+            SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneOS${IPHONE_SDKVER}.sdk")
++            EXECUTE_PROCESS(COMMAND xcrun --sdk iphoneos --show-sdk-path OUTPUT_VARIABLE IPHONE_SDKROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
 +        ENDIF()
  
          # optionally enable bitcode for the build

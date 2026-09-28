@@ -9,8 +9,8 @@ include(ExternalProject)
 
 # ------------------- Configuration -------------------
 set(IOS_PLATFORM "OS64" CACHE STRING "iOS Platform (OS64, SIMULATORARM64)")
-set(DEPLOYMENT_TARGET "26.2")
-set(COMMON_FLAGS "-O3 -fPIC -stdlib=libc++")
+set(DEPLOYMENT_TARGET "16.4")
+set(COMMON_FLAGS "-O3 -fPIC -stdlib=libc++ -w")
 cmake_host_system_information(RESULT BUILD_JOBS QUERY NUMBER_OF_LOGICAL_CORES)
 
 if(IOS_PLATFORM STREQUAL "OS64")
