@@ -1,5 +1,7 @@
 # OpenMW for iOS
 
+to install this launcher use testflight [here](https://testflight.apple.com/join/BrtSQyWb).
+
 [Buy me a coffee.](https://ko-fi.com/jareddavenport)
 
 [OpenMW](https://openmw.org) (the open-source Morrowind engine, 0.51.0) running
