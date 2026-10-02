@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-and-stage:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       # 1. Клонируем ваш репозиторий со всеми скриптами сборки и патчами
