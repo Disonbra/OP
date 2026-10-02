@@ -1,4 +1,4 @@
-name: Fetch, Patch and Package Shaders (iOS SDK 26.2)
+name: Build OpenMW iOS Engine & Pack Shaders
 
 on:
   push:
@@ -8,37 +8,38 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-archive:
+  build-and-stage:
     runs-on: macos-14
 
     steps:
-      # 1. Клонируем ваш текущий репозиторий на GitHub
+      # 1. Клонируем ваш репозиторий со всеми скриптами сборки и патчами
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive # Выкачиваем субмодули, если они завязаны в зависимостях
 
-      # 2. Скачиваем исходники OpenMW из вашего форка на GitLab (Исправлено)
-      - name: Fetch original shaders from GitLab fork
+      # 2. Устанавливаем необходимые утилиты сборки (CMake, Ninja и т.д.) через Homebrew
+      - name: Install build dependencies
         run: |
-          echo "Cloning openmw_ios repository from GitLab..."
-          # Клонируем строго в папку openmw_source для предсказуемости путей
-          git clone --depth=1 https://gitlab.com openmw_source
-          
-          echo "Creating target directory structure..."
-          mkdir -p iosApp/OpenMWAssets/resources
-          
-          echo "Moving shaders folder..."
-          # Переносим папку shaders из скачанного репозитория
-          mv openmw_source/iosApp/OpenMWAssets/resources/shaders ./iosApp/OpenMWAssets/resources/
-          
-          # Очищаем временные исходники
-          rm -rf openmw_source
-          echo "Original shaders successfully fetched."
-          
-          echo "Current directory contents for verification:"
-          ls -R iosApp
+          brew install cmake ninja toolchain-table
+          # Проверяем наличие инструментов архивации
+          which zip
 
-      # 3. Инжектируем исправленный скрипт патчинга под GLES 310 / SPIR-V
-      - name: Inject updated patch script
+      # 3. Запускаем нативный скрипт сборки всего зависимого стека (gl4es, SDL, OpenMW dylibs)
+      - name: Build dependency stack (iOS OS64 & SIMULATORARM64)
+        run: |
+          chmod +x ./buildscripts/build_ios.sh
+          ./buildscripts/build_ios.sh
+
+      # 4. Переносим скомпилированные библиотеки движка в структуру SwiftUI-приложения
+      - name: Stage engine dylibs into application
+        run: |
+          chmod +x ./buildscripts/stage_app_libs.sh
+          ./buildscripts/stage_app_libs.sh
+
+      # 5. Применяем исправленный патч шейдеров (GLES 310 / SPIR-V фикс для gui.vert и др.)
+      # Скрипт отрабатывает прямо внутри сформированной папки приложения
+      - name: Patch Shaders for iOS Compatibility
         run: |
           cat << 'EOF' > ./patch_shaders.sh
           #!/bin/bash
@@ -46,13 +47,13 @@ jobs:
           SHADERS_DIR="${REPO_DIR}/iosApp/OpenMWAssets/resources/shaders"
 
           if [ ! -d "$SHADERS_DIR" ]; then
-              echo "Error: Directory $SHADERS_DIR not found."
+              echo "Error: Directory $SHADERS_DIR not found. Сборка не сформировала ресурсы."
               exit 1
           fi
 
-          echo "=== Patching Shaders for iOS (GLES 310 / SPIR-V) ==="
+          echo "=== Patching Shaders for iOS GLES / SPIR-V ==="
 
-          # --- Part 1: patchShadersLinking (Specific files) ---
+          # --- Part 1: patchShadersLinking (Специфичные фиксы связывания) ---
           VERTEX_H="$SHADERS_DIR/lib/core/vertex.h.glsl"
           VERTEX_GLSL="$SHADERS_DIR/lib/core/vertex.glsl"
           if [ -f "$VERTEX_H" ] && ! grep -q "#pragma CONVERTED" "$VERTEX_H"; then
@@ -86,20 +87,18 @@ jobs:
           [ -f "$SHADERS_DIR/lib/light/util.glsl" ] && perl -i -pe 's/\* int\(gridSize.z\)\) \//\* gridSize.z) \//g' "$SHADERS_DIR/lib/light/util.glsl"
           [ -f "$SHADERS_DIR/compatibility/fog.glsl" ] && perl -i -pe 's/#include/\/\//g' "$SHADERS_DIR/compatibility/fog.glsl"
 
-          # --- Part 2: patchShadersToGLES (All files, including GUI) ---
+          # --- Part 2: patchShadersToGLES (Все шейдеры, включая gui.vert/gui.frag) ---
           find "$SHADERS_DIR" -type f \( -name "*.vert" -o -name "*.frag" -o -name "*.comp" -o -name "*.glsl" \) | while read -r file; do
               if grep -q "#pragma GLES" "$file"; then
                   continue
               fi
 
-              # Очищаем старые директивы версий и пустые строки перед ними
+              # Ставим версию строго на первую строку файла (фикс ошибки glslang/SPIR-V)
               perl -i -0777 -pe 's/^(\s*(\/\/.*|\/\*[\s\S]*?\*\/)?\s*)*#version\s+\d+(\s+es)?\s*\n//g' "$file"
-              
-              # Записываем #version 310 es строго на ПЕРВУЮ строчку
               HEADER="#version 310 es\nprecision highp float;\nprecision highp int;\n\n//HEADER_END\n"
               perl -i -0777 -pe "print \"$HEADER\" if \$. == 1; " "$file"
 
-              # Замены для встроенных переменных под GLES
+              # Общие замены переменных
               perl -i -pe 's/#extension/\/\/extension/g' "$file"
               perl -i -pe 's/gl_/osg_/g' "$file"
               perl -i -pe 's/osg_Position/gl_Position/g' "$file"
@@ -135,21 +134,18 @@ jobs:
           echo "=== Patching Completed Successfully ==="
           EOF
           chmod +x ./patch_shaders.sh
+          ./patch_shaders.sh
 
-      # 4. Запускаем пропатченный скрипт на скачанной папке
-      - name: Run shader patching script
-        run: ./patch_shaders.sh
-
-      # 5. Упаковываем готовую папку shaders в ZIP-архив
+      # 6. Упаковываем полностью готовую, пропатченную папку shaders в ZIP-архив
       - name: Create ZIP archive
         run: |
           cd iosApp/OpenMWAssets/resources
-          zip -r ../../../patched_shaders.zip shaders
+          zip -r ../../../patched_shaders_ios.zip shaders
 
-      # 6. Выгружаем готовый ZIP-архив в артефакты GitHub Actions
+      # 7. Выгружаем ZIP-архив в артефакты сборки
       - name: Upload Patched Shaders Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: patched-shaders-ios26.2
-          path: patched_shaders.zip
+          name: openmw-patched-shaders-ios
+          path: patched_shaders_ios.zip
           retention-days: 7
