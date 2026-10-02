@@ -22,20 +22,24 @@ jobs:
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -showsdks
 
-      # 3. Перезаписываем/обновляем локальный скрипт исправленной версией под GLES 310 и SPIR-V
+      # 3. Создаем скрипт с умным автопоиском директории шейдеров
       - name: Inject updated patch script
         run: |
           cat << 'EOF' > ./patch_shaders.sh
           #!/bin/bash
-          REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          DEFAULT_SHADERS_DIR="${REPO_DIR}/iosApp/OpenMWAssets/resources/shaders"
-          SHADERS_DIR="${1:-$DEFAULT_SHADERS_DIR}"
+          REPO_DIR="$(cd "$(dirname "${BASH_SOURCE}")" && pwd)"
+          
+          # Автоматический поиск папки shaders в репозитории
+          echo "Looking for shaders directory..."
+          FOUND_DIR=$(find "$REPO_DIR" -type d -name "shaders" | head -n 1)
 
-          if [ ! -d "$SHADERS_DIR" ]; then
-              echo "Error: Directory $SHADERS_DIR not found."
+          if [ -z "$FOUND_DIR" ] || [ ! -d "$FOUND_DIR" ]; then
+              echo "Error: Could not automatically find any 'shaders' directory in the repository."
               exit 1
           fi
 
+          SHADERS_DIR="$FOUND_DIR"
+          echo "=== Found Shaders Directory: $SHADERS_DIR ==="
           echo "=== Patching Shaders for iOS (GLES 310 / SPIR-V) ==="
 
           # --- Part 1: patchShadersLinking (Specific files) ---
@@ -118,6 +122,9 @@ jobs:
               fi
               echo "#pragma GLES" >> "$file"
           done
+          
+          # Экспортируем путь для шага архивации
+          echo "TARGET_SHADERS_DIR=$SHADERS_DIR" >> $GITHUB_ENV
           echo "=== Patching Completed Successfully ==="
           EOF
           chmod +x ./patch_shaders.sh
@@ -126,11 +133,12 @@ jobs:
       - name: Run shader patching script
         run: ./patch_shaders.sh
 
-      # 5. Упаковываем готовую папку shaders в ZIP
+      # 5. Упаковываем найденную папку shaders в ZIP-архив
       - name: Create ZIP archive
         run: |
-          cd iosApp/OpenMWAssets/resources
-          zip -r ../../../patched_shaders.zip shaders
+          PARENT_DIR=$(dirname "${{ env.TARGET_SHADERS_DIR }}")
+          cd "$PARENT_DIR"
+          zip -r "$GITHUB_WORKSPACE/patched_shaders.zip" shaders
 
       # 6. Выгружаем артефакт в GitHub Actions
       - name: Upload Patched Shaders Artifact
