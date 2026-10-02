@@ -12,21 +12,30 @@ jobs:
     runs-on: macos-14
 
     steps:
-      # 1. Клонируем ваш текущий репозиторий на GitHub (где будет выполняться экшен)
+      # 1. Клонируем ваш текущий репозиторий на GitHub
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Скачиваем исходники OpenMW из вашего форка на GitLab
+      # 2. Скачиваем исходники OpenMW из вашего форка на GitLab (Исправлено)
       - name: Fetch original shaders from GitLab fork
         run: |
           echo "Cloning openmw_ios repository from GitLab..."
-          git clone --depth=1 https://gitlab.com/duron27/openmw_ios
+          # Клонируем строго в папку openmw_source для предсказуемости путей
+          git clone --depth=1 https://gitlab.com openmw_source
           
-          # Переносим структуру папок в корень воркспейса
+          echo "Creating target directory structure..."
           mkdir -p iosApp/OpenMWAssets/resources
-          mv openmw_source/iosApp/OpenMWAssets/resources/shaders ./iosApp/OpenMWAssets/resources/shaders
+          
+          echo "Moving shaders folder..."
+          # Переносим папку shaders из скачанного репозитория
+          mv openmw_source/iosApp/OpenMWAssets/resources/shaders ./iosApp/OpenMWAssets/resources/
+          
+          # Очищаем временные исходники
           rm -rf openmw_source
           echo "Original shaders successfully fetched."
+          
+          echo "Current directory contents for verification:"
+          ls -R iosApp
 
       # 3. Инжектируем исправленный скрипт патчинга под GLES 310 / SPIR-V
       - name: Inject updated patch script
@@ -131,7 +140,7 @@ jobs:
       - name: Run shader patching script
         run: ./patch_shaders.sh
 
-      # 5. Упаковываем готовую папку shaders в ZIP-архив с сохранением структуры для iOS-проекта
+      # 5. Упаковываем готовую папку shaders в ZIP-архив
       - name: Create ZIP archive
         run: |
           cd iosApp/OpenMWAssets/resources
