@@ -18,13 +18,6 @@ jobs:
         with:
           submodules: recursive # Выкачиваем субмодули, если они завязаны в зависимостях
 
-      # 2. Устанавливаем необходимые утилиты сборки (CMake, Ninja и т.д.) через Homebrew
-      - name: Install build dependencies
-        run: |
-          brew install cmake ninja toolchain-table
-          # Проверяем наличие инструментов архивации
-          which zip
-
       # 3. Запускаем нативный скрипт сборки всего зависимого стека (gl4es, SDL, OpenMW dylibs)
       - name: Build dependency stack (iOS OS64 & SIMULATORARM64)
         run: |
