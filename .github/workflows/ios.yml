@@ -1,0 +1,91 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+
+      - name: Show environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcode-select -p
+          swift --version
+
+      - name: Make scripts executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x buildscripts/*.sh
+
+      - name: Build dependency stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./buildscripts/build_ios.sh
+
+      - name: Stage device libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./buildscripts/stage_app_libs.sh device
+
+      - name: Verify staged libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d iosApp/EmbeddedLibsDevice
+          find iosApp/EmbeddedLibsDevice -maxdepth 2 -type f -print | sort
+
+      - name: Show Xcode projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          find iosApp -maxdepth 2 \( -name '*.xcodeproj' -o -name '*.xcworkspace' \) -print
+
+      - name: Build app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./buildscripts/package_ipa.sh device
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: openmw-ios
+          path: |
+            **/*.ipa
+            **/*.app
+          if-no-files-found: error
